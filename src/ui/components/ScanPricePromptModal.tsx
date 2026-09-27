@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, AlertCircle, Barcode, Check, Database, Globe, Scale } from 'lucide-react';
+import { X, Plus, AlertCircle, Barcode, Check, Database, Globe, Scale, ScanText } from 'lucide-react';
 import { Money, ProductLookupSource } from '../../domain/index.js';
+import { OcrPriceScannerModal } from './OcrPriceScannerModal.js';
 
 export interface ScanPricePromptModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
   const [priceInput, setPriceInput] = useState('');
   const [isBulk, setIsBulk] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOcrOpen, setIsOcrOpen] = useState(false);
   const priceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -39,6 +41,7 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
       setPriceInput(initialPrice ? initialPrice.toDecimalString() : '');
       setIsBulk(Boolean(isScale));
       setError(null);
+      setIsOcrOpen(false);
       // Autofocus the price input for fast supermarket aisle entry
       setTimeout(() => {
         priceInputRef.current?.focus();
@@ -148,9 +151,21 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="form-group">
-            <label htmlFor="scan-item-price" className="form-label">
-              Precio en lineal (€) *
-            </label>
+            <div className="form-label-row">
+              <label htmlFor="scan-item-price" className="form-label">
+                Precio en lineal (€) *
+              </label>
+              <button
+                type="button"
+                className="btn-ocr-trigger"
+                onClick={() => setIsOcrOpen(true)}
+                title="Leer precio con cámara desde la estantería"
+                aria-label="Leer precio con cámara"
+              >
+                <ScanText size={15} />
+                <span>Leer precio con cámara</span>
+              </button>
+            </div>
             <input
               id="scan-item-price"
               ref={priceInputRef}
@@ -220,6 +235,15 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
           </div>
         </form>
       </div>
+
+      <OcrPriceScannerModal
+        isOpen={isOcrOpen}
+        onClose={() => setIsOcrOpen(false)}
+        onPriceDetected={(detectedPrice) => {
+          handlePriceChange(detectedPrice.toDecimalString());
+          setIsOcrOpen(false);
+        }}
+      />
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, AlertCircle, Check } from 'lucide-react';
+import { X, Plus, AlertCircle, Check, ScanText } from 'lucide-react';
 import { Money } from '../../domain/index.js';
+import { OcrPriceScannerModal } from './OcrPriceScannerModal.js';
 
 export interface ManualItemModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ export const ManualItemModal: React.FC<ManualItemModalProps> = ({
   const [priceInput, setPriceInput] = useState('');
   const [isBulk, setIsBulk] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOcrOpen, setIsOcrOpen] = useState(false);
   const priceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -25,6 +27,7 @@ export const ManualItemModal: React.FC<ManualItemModalProps> = ({
       setPriceInput('');
       setIsBulk(false);
       setError(null);
+      setIsOcrOpen(false);
       // Autofocus the price input on open for quick entry
       setTimeout(() => {
         priceInputRef.current?.focus();
@@ -108,9 +111,21 @@ export const ManualItemModal: React.FC<ManualItemModalProps> = ({
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="form-group">
-            <label htmlFor="manual-item-price" className="form-label">
-              Precio en Euros (€) *
-            </label>
+            <div className="form-label-row">
+              <label htmlFor="manual-item-price" className="form-label">
+                Precio en Euros (€) *
+              </label>
+              <button
+                type="button"
+                className="btn-ocr-trigger"
+                onClick={() => setIsOcrOpen(true)}
+                title="Leer precio con cámara desde la estantería"
+                aria-label="Leer precio con cámara"
+              >
+                <ScanText size={15} />
+                <span>Leer precio con cámara</span>
+              </button>
+            </div>
             <input
               id="manual-item-price"
               ref={priceInputRef}
@@ -180,6 +195,15 @@ export const ManualItemModal: React.FC<ManualItemModalProps> = ({
           </div>
         </form>
       </div>
+
+      <OcrPriceScannerModal
+        isOpen={isOcrOpen}
+        onClose={() => setIsOcrOpen(false)}
+        onPriceDetected={(detectedPrice) => {
+          handlePriceChange(detectedPrice.toDecimalString());
+          setIsOcrOpen(false);
+        }}
+      />
     </div>
   );
 };
