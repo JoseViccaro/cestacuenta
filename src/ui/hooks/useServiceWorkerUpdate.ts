@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface UseServiceWorkerUpdateReturn {
   isUpdateAvailable: boolean;
@@ -9,6 +9,7 @@ export interface UseServiceWorkerUpdateReturn {
 export function useServiceWorkerUpdate(): UseServiceWorkerUpdateReturn {
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const waitingWorkerRef = useRef<ServiceWorker | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
@@ -25,36 +26,50 @@ export function useServiceWorkerUpdate(): UseServiceWorkerUpdateReturn {
       }
     };
 
+    // When the new worker activates after SKIP_WAITING, reload once
+    let refreshing = false;
+    const handleControllerChange = () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
     // Listen for service worker registration
     navigator.serviceWorker.ready
       .then((reg) => {
         registration = reg;
 
-        // If a new worker is already waiting, flag update immediately
-        if (reg.waiting) {
+        // If a new worker is already waiting in background (requires an existing active controller)
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          waitingWorkerRef.current = reg.waiting;
           setIsUpdateAvailable(true);
         }
 
-        // Detect new versions entering the update lifecycle
+        // Detect newly installed worker waiting for activation
         reg.addEventListener('updatefound', () => {
           const installingWorker = reg.installing;
           if (!installingWorker) return;
 
           installingWorker.addEventListener('statechange', () => {
+            // Only prompt if there is an existing controller (i.e. this is an update, not first visit)
             if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              waitingWorkerRef.current = installingWorker;
               setIsUpdateAvailable(true);
             }
           });
         });
 
-        // Trigger an immediate check on startup
+        // Trigger an update check on startup
         checkForUpdates();
       })
       .catch((err) => {
         console.debug('ServiceWorker ready error:', err);
       });
 
-    // Check for updates when user returns to the app (unminimizes / unlocks screen)
+    // Check for updates when user returns to the app
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkForUpdates();
@@ -65,16 +80,10 @@ export function useServiceWorkerUpdate(): UseServiceWorkerUpdateReturn {
       checkForUpdates();
     };
 
-    // If new worker took control via skipWaiting / clientsClaim
-    const handleControllerChange = () => {
-      setIsUpdateAvailable(true);
-    };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
-    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
-    // Periodic check every 60 seconds while app is in use
+    // Periodic check every 60 seconds while app is active
     const intervalId = window.setInterval(checkForUpdates, 60 * 1000);
 
     return () => {
@@ -86,7 +95,11 @@ export function useServiceWorkerUpdate(): UseServiceWorkerUpdateReturn {
   }, []);
 
   const updateApp = useCallback(() => {
-    window.location.reload();
+    if (waitingWorkerRef.current) {
+      waitingWorkerRef.current.postMessage({ type: 'SKIP_WAITING' });
+    } else {
+      window.location.reload();
+    }
   }, []);
 
   const dismissUpdate = useCallback(() => {

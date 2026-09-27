@@ -8,7 +8,7 @@ export default defineConfig({
     basicSsl(),
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['icon.svg', 'apple-touch-icon.png', 'favicon.png'],
       manifest: {
         name: 'CestaCuenta — Control de Gasto',
@@ -47,7 +47,8 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}']
+        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        cleanupOutdatedCaches: true,
       }
     })
   ],
