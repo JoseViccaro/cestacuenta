@@ -1,6 +1,6 @@
 import React from 'react';
-import { X, CheckCheck, ShoppingBag } from 'lucide-react';
-import { ShoppingSession } from '../../domain/index.js';
+import { X, CheckCheck, ShoppingBag, Download } from 'lucide-react';
+import { ShoppingSession, ExportService } from '../../domain/index.js';
 
 export interface FinishModalProps {
   isOpen: boolean;
@@ -74,22 +74,48 @@ export const FinishModal: React.FC<FinishModalProps> = ({
           Al confirmar, esta sesión se archivará en tu historial local y tendrás una cesta nueva limpia lista para tu próxima compra.
         </p>
 
-        <div className="modal-actions">
+        <div className="modal-actions modal-actions-column">
           <button
             type="button"
-            className="btn-modal-secondary"
-            onClick={onClose}
+            className="btn-modal-export"
+            onClick={() => {
+              const csv = ExportService.sessionToCsv(session);
+              const dateStr =
+                session.startedAt instanceof Date
+                  ? session.startedAt.toISOString().slice(0, 10)
+                  : new Date(session.startedAt).toISOString().slice(0, 10);
+              const cleanStore = (session.storeName || 'compra')
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '-');
+              ExportService.downloadBlob(
+                csv,
+                `cestacuenta-${cleanStore}-${dateStr}.csv`,
+                'text/csv;charset=utf-8;'
+              );
+            }}
+            aria-label="Exportar detalle de la compra a CSV"
           >
-            Volver a la cesta
+            <Download size={18} />
+            <span>Exportar detalle a CSV</span>
           </button>
-          <button
-            type="button"
-            className="btn-modal-primary"
-            onClick={onConfirmFinish}
-          >
-            <CheckCheck size={20} />
-            <span>Confirmar y cerrar compra</span>
-          </button>
+
+          <div className="modal-actions-row">
+            <button
+              type="button"
+              className="btn-modal-secondary"
+              onClick={onClose}
+            >
+              Volver a la cesta
+            </button>
+            <button
+              type="button"
+              className="btn-modal-primary"
+              onClick={onConfirmFinish}
+            >
+              <CheckCheck size={20} />
+              <span>Confirmar y archivar</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

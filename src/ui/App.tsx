@@ -21,6 +21,7 @@ import { FinishModal } from './components/FinishModal.js';
 import { ScannerModal } from './components/ScannerModal.js';
 import { ScanPricePromptModal } from './components/ScanPricePromptModal.js';
 import { ToastUndo } from './components/ToastUndo.js';
+import { HistoryModal } from './components/HistoryModal.js';
 
 const DEFAULT_STORE_NAME = 'Mi Supermercado';
 
@@ -44,6 +45,8 @@ export const App: React.FC = () => {
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   // Scanner and ScanPrice state
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -170,6 +173,9 @@ export const App: React.FC = () => {
     session.complete();
     await repository.save(session);
 
+    // Increment history key so HistoryModal reloads the completed purchase
+    setHistoryRefreshKey((k) => k + 1);
+
     const freshSession = ShoppingSession.create({
       storeName: session.storeName || DEFAULT_STORE_NAME,
     });
@@ -295,6 +301,7 @@ export const App: React.FC = () => {
         itemCount={totalItemCount}
         onClearCart={handleClearCart}
         onOpenFinishModal={() => setIsFinishModalOpen(true)}
+        onOpenHistory={() => setIsHistoryModalOpen(true)}
       />
 
       <main className="main-content">
@@ -357,6 +364,13 @@ export const App: React.FC = () => {
         session={session}
         onClose={() => setIsFinishModalOpen(false)}
         onConfirmFinish={handleConfirmFinish}
+      />
+
+      <HistoryModal
+        key={historyRefreshKey}
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        sessionRepository={repository}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Store, Pencil, Check, Trash2, ShoppingBag } from 'lucide-react';
+import { Store, Pencil, Check, Trash2, ShoppingBag, History } from 'lucide-react';
 
 export interface HeaderProps {
   storeName: string;
@@ -8,6 +8,8 @@ export interface HeaderProps {
   itemCount: number;
   onClearCart: () => void;
   onOpenFinishModal: () => void;
+  onOpenHistory?: () => void;
+  onOpenHistoryModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,9 +19,13 @@ export const Header: React.FC<HeaderProps> = ({
   itemCount,
   onClearCart,
   onOpenFinishModal,
+  onOpenHistory,
+  onOpenHistoryModal,
 }) => {
   const [isEditingStore, setIsEditingStore] = useState(false);
   const [tempStoreName, setTempStoreName] = useState(storeName);
+
+  const handleOpenHistory = onOpenHistory || onOpenHistoryModal;
 
   const handleStartEdit = () => {
     setTempStoreName(storeName);
@@ -92,6 +98,19 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="header-actions">
+        {handleOpenHistory && (
+          <button
+            type="button"
+            className="btn-header-action"
+            onClick={handleOpenHistory}
+            title="Ver historial de compras"
+            aria-label="Ver historial de compras"
+          >
+            <History size={16} />
+            <span>Historial</span>
+          </button>
+        )}
+
         {lineCount > 0 && (
           <>
             <button
