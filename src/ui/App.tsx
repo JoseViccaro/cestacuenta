@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingSession, Money, CartItem, BarcodeScannerHandler } from '../domain/index.js';
+import {
+  ShoppingSession,
+  Money,
+  CartItem,
+  ProductReference,
+  BarcodeScannerHandler,
+  ProductLookupService,
+  ProductLookupResult,
+} from '../domain/index.js';
 import { LocalStorageShoppingSessionRepository } from '../infrastructure/persistence/web/LocalStorageShoppingSessionRepository.js';
+import { LocalStorageProductCatalogRepository } from '../infrastructure/persistence/web/LocalStorageProductCatalogRepository.js';
+import { OpenFoodFactsClient } from '../infrastructure/external/OpenFoodFactsClient.js';
 import { Haptics } from '../infrastructure/device/Haptics.js';
 import { Header } from './components/Header.js';
 import { CartList } from './components/CartList.js';
@@ -22,6 +32,12 @@ interface UndoState {
 
 export const App: React.FC = () => {
   const repository = useMemo(() => new LocalStorageShoppingSessionRepository(), []);
+  const catalogRepository = useMemo(() => new LocalStorageProductCatalogRepository(), []);
+  const offClient = useMemo(() => new OpenFoodFactsClient(), []);
+  const productLookupService = useMemo(
+    () => new ProductLookupService(catalogRepository, offClient),
+    [catalogRepository, offClient]
+  );
   const barcodeScannerHandler = useMemo(() => new BarcodeScannerHandler(2000), []);
 
   const [session, setSession] = useState<ShoppingSession | null>(null);
@@ -32,6 +48,7 @@ export const App: React.FC = () => {
   // Scanner and ScanPrice state
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [pendingScanCode, setPendingScanCode] = useState<string | null>(null);
+  const [pendingLookupResult, setPendingLookupResult] = useState<ProductLookupResult | null>(null);
   const [isScanPriceModalOpen, setIsScanPriceModalOpen] = useState(false);
 
   // Undo Toast state
@@ -160,8 +177,8 @@ export const App: React.FC = () => {
     setIsFinishModalOpen(false);
   };
 
-  // Barcode scanning flow (Fase 2)
-  const handleBarcodeScanned = (barcode: string) => {
+  // Barcode scanning flow (Fase 2 & 3)
+  const handleBarcodeScanned = async (barcode: string) => {
     if (!session) return;
 
     const trimmed = barcode.trim();
@@ -177,7 +194,12 @@ export const App: React.FC = () => {
 
     if (existingItem) {
       // Existing item in cart: auto-increment +1, haptics, toast with undo
-      const { item } = session.scanBarcode(trimmed, existingItem.unitPrice, existingItem.name);
+      const { item } = session.scanBarcode(
+        trimmed,
+        existingItem.unitPrice,
+        existingItem.name,
+        existingItem.isBulk
+      );
       commitSession(session);
       Haptics.triggerScanSuccess();
 
@@ -189,18 +211,32 @@ export const App: React.FC = () => {
       setToastMessage(`Añadido: ${existingItem.name} (${item.quantity} uds en total)`);
       setIsToastOpen(true);
     } else {
-      // New barcode in cart: pause reader and request shelf price
+      // New barcode in cart: lookup in local catalog / Open Food Facts / Scale
+      const lookupResult = await productLookupService.lookup(trimmed);
       setPendingScanCode(trimmed);
+      setPendingLookupResult(lookupResult);
       setIsScanPriceModalOpen(true);
     }
   };
 
-  const handleConfirmScanPrice = (name: string, price: Money) => {
+  const handleConfirmScanPrice = (name: string, price: Money, isBulk: boolean) => {
     if (!session || !pendingScanCode) return;
 
-    const { item } = session.scanBarcode(pendingScanCode, price, name);
+    const barcode = pendingScanCode;
+    const { item } = session.scanBarcode(barcode, price, name, isBulk);
     commitSession(session);
     Haptics.triggerScanSuccess();
+
+    // Guardar o actualizar la referencia en el catálogo local
+    const productRef = new ProductReference({
+      barcode,
+      name,
+      lastPrice: price,
+      updatedAt: new Date(),
+    });
+    catalogRepository.save(productRef).catch((err) => {
+      console.error('Failed to save product reference to catalog:', err);
+    });
 
     setUndoState({
       itemId: item.id,
@@ -212,11 +248,13 @@ export const App: React.FC = () => {
 
     setIsScanPriceModalOpen(false);
     setPendingScanCode(null);
+    setPendingLookupResult(null);
   };
 
   const handleCloseScanPriceModal = () => {
     setIsScanPriceModalOpen(false);
     setPendingScanCode(null);
+    setPendingLookupResult(null);
     barcodeScannerHandler.reset();
   };
 
@@ -293,6 +331,10 @@ export const App: React.FC = () => {
       <ScanPricePromptModal
         isOpen={isScanPriceModalOpen}
         barcode={pendingScanCode || ''}
+        initialName={pendingLookupResult?.name}
+        initialPrice={pendingLookupResult?.suggestedPrice}
+        isScale={pendingLookupResult?.isScale}
+        source={pendingLookupResult?.source}
         onClose={handleCloseScanPriceModal}
         onConfirm={handleConfirmScanPrice}
       />

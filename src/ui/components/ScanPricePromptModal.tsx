@@ -1,36 +1,50 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, AlertCircle, Barcode } from 'lucide-react';
-import { Money } from '../../domain/index.js';
+import { X, Plus, AlertCircle, Barcode, Check, Database, Globe, Scale } from 'lucide-react';
+import { Money, ProductLookupSource } from '../../domain/index.js';
 
 export interface ScanPricePromptModalProps {
   isOpen: boolean;
   barcode: string;
+  initialName?: string;
+  initialPrice?: Money;
+  isScale?: boolean;
+  source?: ProductLookupSource;
   onClose: () => void;
-  onConfirm: (name: string, price: Money) => void;
+  onConfirm: (name: string, price: Money, isBulk: boolean) => void;
 }
 
 export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
   isOpen,
   barcode,
+  initialName,
+  initialPrice,
+  isScale,
+  source,
   onClose,
   onConfirm,
 }) => {
   const [name, setName] = useState('');
   const [priceInput, setPriceInput] = useState('');
+  const [isBulk, setIsBulk] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const priceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setName(`Producto ${barcode}`);
-      setPriceInput('');
+      const defaultName =
+        initialName && initialName.trim().length > 0
+          ? initialName.trim()
+          : `Producto ${barcode}`;
+      setName(defaultName);
+      setPriceInput(initialPrice ? initialPrice.toDecimalString() : '');
+      setIsBulk(Boolean(isScale));
       setError(null);
       // Autofocus the price input for fast supermarket aisle entry
       setTimeout(() => {
         priceInputRef.current?.focus();
       }, 50);
     }
-  }, [isOpen, barcode]);
+  }, [isOpen, barcode, initialName, initialPrice, isScale]);
 
   if (!isOpen) return null;
 
@@ -66,7 +80,7 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
         return;
       }
       const finalName = name.trim().length > 0 ? name.trim() : `Producto ${barcode}`;
-      onConfirm(finalName, parsedMoney);
+      onConfirm(finalName, parsedMoney, isBulk);
       onClose();
     } catch {
       setError('Formato no válido (ej: 1,45 o 0,80)');
@@ -97,9 +111,29 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
             <h2 id="scan-price-title" className="modal-title">
               Nuevo Producto Escaneado
             </h2>
-            <div className="scanned-barcode-pill">
-              <Barcode size={16} />
-              <span>{barcode}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+              <div className="scanned-barcode-pill">
+                <Barcode size={16} />
+                <span>{barcode}</span>
+              </div>
+              {source === 'LOCAL' && (
+                <span className="badge-source badge-source-local" title="Recuperado del catálogo local">
+                  <Database size={13} />
+                  <span>Catálogo local</span>
+                </span>
+              )}
+              {source === 'OPEN_FOOD_FACTS' && (
+                <span className="badge-source badge-source-off" title="Encontrado en Open Food Facts">
+                  <Globe size={13} />
+                  <span>Encontrado en Open Food Facts</span>
+                </span>
+              )}
+              {isScale && (
+                <span className="badge-source badge-source-scale" title="Producto pesado en balanza">
+                  <Scale size={13} />
+                  <span>Producto de balanza</span>
+                </span>
+              )}
             </div>
           </div>
           <button
@@ -151,6 +185,21 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
               onChange={(e) => setName(e.target.value)}
             />
           </div>
+
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              style={{ display: 'none' }}
+              checked={isBulk}
+              onChange={(e) => setIsBulk(e.target.checked)}
+            />
+            <div className="checkbox-custom" aria-hidden="true">
+              {isBulk && <Check size={16} strokeWidth={3} />}
+            </div>
+            <span className="checkbox-label-text">
+              Es producto a granel / al peso
+            </span>
+          </label>
 
           <div className="modal-actions">
             <button

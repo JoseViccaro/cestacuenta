@@ -152,6 +152,18 @@ describe('ShoppingSession Entity', () => {
       expect(session.totalItemCount()).toBe(3);
     });
 
+    it('supports isBulk flag when scanning bulk or scale items', () => {
+      const session = ShoppingSession.create();
+      const barcode = '2100123004507';
+      const price = Money.fromCents(450);
+
+      const result = session.scanBarcode(barcode, price, 'Manzanas Balanza', true);
+      expect(result.isNew).toBe(true);
+      expect(result.item.isBulk).toBe(true);
+      expect(result.item.name).toBe('Manzanas Balanza');
+      expect(session.items[0].isBulk).toBe(true);
+    });
+
     it('rejects invalid barcode or unitPrice', () => {
       const session = ShoppingSession.create();
       expect(() => session.scanBarcode('', Money.fromCents(100))).toThrow('Barcode must be a non-empty string');

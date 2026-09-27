@@ -74,7 +74,8 @@ export class ShoppingSession {
   scanBarcode(
     barcode: string,
     unitPrice: Money,
-    defaultName?: string
+    defaultName?: string,
+    isBulk?: boolean
   ): { item: CartItem; isNew: boolean } {
     this.ensureActive();
 
@@ -107,7 +108,7 @@ export class ShoppingSession {
       name: defaultName && defaultName.trim().length > 0 ? defaultName.trim() : `Producto ${trimmedBarcode}`,
       unitPrice,
       quantity: 1,
-      isBulk: false,
+      isBulk: isBulk ?? false,
       discount: Money.fromCents(0),
     });
 

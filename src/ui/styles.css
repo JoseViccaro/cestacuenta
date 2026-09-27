@@ -806,8 +806,37 @@ input, select, textarea {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--accent-cyan);
-  margin-top: 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Provenance badges in ScanPricePromptModal */
+.badge-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  line-height: 1;
+}
+
+.badge-source-off {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.badge-source-local {
+  background: var(--primary-surface);
+  color: var(--primary);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-source-scale {
+  background: var(--accent-amber-surface);
+  color: var(--accent-amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 /* Floating Toast Undo Notification */
