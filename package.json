@@ -5,10 +5,12 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
+    "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "",
@@ -16,7 +18,16 @@
   "packageManager": "pnpm@10.33.2",
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
+    "vite": "^8.3.1",
     "vitest": "^5.0.2"
+  },
+  "dependencies": {
+    "lucide-react": "^1.48.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   }
 }
