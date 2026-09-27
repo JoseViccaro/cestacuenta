@@ -295,15 +295,14 @@ export const App: React.FC = () => {
   const totalItemCount = session.totalItemCount();
   const total = session.total();
 
-  const filteredItems = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
-      (item) =>
-        item.name.toLowerCase().includes(q) ||
-        (item.barcode && item.barcode.toLowerCase().includes(q))
-    );
-  }, [items, searchQuery]);
+  const q = searchQuery.trim().toLowerCase();
+  const filteredItems = q
+    ? items.filter(
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          (item.barcode && item.barcode.toLowerCase().includes(q))
+      )
+    : items;
 
   return (
     <div className="app-container">
