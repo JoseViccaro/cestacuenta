@@ -75,6 +75,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       try {
         const scanner = new Html5Qrcode('qr-reader', {
           verbose: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
           formatsToSupport: [
             Html5QrcodeSupportedFormats.EAN_13,
             Html5QrcodeSupportedFormats.EAN_8,
@@ -83,18 +86,19 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             Html5QrcodeSupportedFormats.CODE_128,
             Html5QrcodeSupportedFormats.CODE_39,
             Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.QR_CODE,
           ],
         });
         scannerRef.current = scanner;
 
         const scanConfig: Html5QrcodeCameraScanConfig = {
-          fps: 10,
+          fps: 20,
+          disableFlip: false, // Essential for laptop front-facing webcams (mirrored feed)
           qrbox: (viewfinderWidth, viewfinderHeight) => {
             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const edgeWidth = Math.floor(minEdge * 0.85);
             return {
-              width: edgeWidth,
-              height: Math.floor(edgeWidth * 0.65), // rectangular aspect ratio ideal for retail 1D barcodes
+              width: Math.floor(minEdge * 0.9),
+              height: Math.floor(minEdge * 0.8), // taller box so barcode is covered easily
             };
           },
           aspectRatio: 1.0,
