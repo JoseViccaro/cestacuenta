@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Store, Pencil, Check, Trash2, ShoppingBag, History, Download } from 'lucide-react';
-import { usePwaInstall } from '../hooks/usePwaInstall';
+import { Store, Pencil, Check, Trash2, ShoppingBag, History, Download, Search, X } from 'lucide-react';
+import { usePwaInstall } from '../hooks/usePwaInstall.js';
 
 export interface HeaderProps {
   storeName: string;
@@ -11,6 +11,8 @@ export interface HeaderProps {
   onOpenFinishModal: () => void;
   onOpenHistory?: () => void;
   onOpenHistoryModal?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,9 +24,12 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenFinishModal,
   onOpenHistory,
   onOpenHistoryModal,
+  searchQuery = '',
+  onSearchChange,
 }) => {
   const [isEditingStore, setIsEditingStore] = useState(false);
   const [tempStoreName, setTempStoreName] = useState(storeName);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { isInstallable, promptInstall } = usePwaInstall();
 
   const handleOpenHistory = onOpenHistory || onOpenHistoryModal;
@@ -100,6 +105,23 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="header-actions">
+        {onSearchChange && lineCount > 0 && (
+          <button
+            type="button"
+            className={`btn-header-action ${isSearchOpen ? 'active' : ''}`}
+            onClick={() => {
+              setIsSearchOpen(!isSearchOpen);
+              if (isSearchOpen && onSearchChange) {
+                onSearchChange('');
+              }
+            }}
+            title={isSearchOpen ? 'Cerrar búsqueda' : 'Buscar artículo'}
+            aria-label={isSearchOpen ? 'Cerrar búsqueda' : 'Buscar artículo en la lista'}
+          >
+            {isSearchOpen ? <X size={16} /> : <Search size={16} />}
+          </button>
+        )}
+
         {isInstallable && (
           <button
             type="button"
@@ -153,6 +175,51 @@ export const Header: React.FC<HeaderProps> = ({
           </>
         )}
       </div>
+
+      {isSearchOpen && onSearchChange && (
+        <div className="header-search-row" style={{ width: '100%', marginTop: '8px' }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+            <Search size={16} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
+            <input
+              type="text"
+              className="store-name-input"
+              style={{
+                width: '100%',
+                paddingLeft: '34px',
+                paddingRight: searchQuery ? '32px' : '10px',
+                backgroundColor: '#1e293b',
+                borderRadius: '8px',
+                border: '1px solid #334155',
+                fontSize: '0.9rem',
+              }}
+              placeholder="Buscar por nombre o código..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              autoFocus
+              aria-label="Buscar artículo en la cesta"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => onSearchChange('')}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                aria-label="Borrar búsqueda"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 };

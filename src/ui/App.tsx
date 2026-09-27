@@ -59,6 +59,9 @@ export const App: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string>('');
   const [isToastOpen, setIsToastOpen] = useState(false);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   // Hydrate active session on initial load
   useEffect(() => {
     let mounted = true;
@@ -292,6 +295,16 @@ export const App: React.FC = () => {
   const totalItemCount = session.totalItemCount();
   const total = session.total();
 
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        (item.barcode && item.barcode.toLowerCase().includes(q))
+    );
+  }, [items, searchQuery]);
+
   return (
     <div className="app-container">
       <Header
@@ -302,11 +315,13 @@ export const App: React.FC = () => {
         onClearCart={handleClearCart}
         onOpenFinishModal={() => setIsFinishModalOpen(true)}
         onOpenHistory={() => setIsHistoryModalOpen(true)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       <main className="main-content">
         <CartList
-          items={items}
+          items={filteredItems}
           onIncrementQuantity={handleIncrementQuantity}
           onDecrementQuantity={handleDecrementQuantity}
           onDeleteItem={handleDeleteItem}
