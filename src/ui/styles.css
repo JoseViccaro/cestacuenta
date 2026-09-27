@@ -42,15 +42,29 @@
   padding: 0;
 }
 
-body {
+html, body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-app);
   color: var(--text-main);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  min-height: 100vh;
-  overflow-x: hidden;
+  height: 100%;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  height: 100%;
+  height: 100dvh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  background-color: #000000;
+  overflow: hidden;
 }
 
 button {
@@ -68,30 +82,32 @@ input, select, textarea {
 
 /* App container - mobile focused */
 .app-container {
+  width: 100%;
   max-width: 480px;
-  margin: 0 auto;
-  min-height: 100vh;
+  height: 100%;
+  height: 100dvh;
   background-color: var(--bg-app);
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
   box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
 }
 
 /* Header */
 .app-header {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 30;
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
-  padding: 12px 16px;
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -197,8 +213,9 @@ input, select, textarea {
 /* Main Content Area */
 .main-content {
   flex: 1;
-  padding: 16px 16px 160px 16px;
+  padding: 16px max(16px, env(safe-area-inset-right)) calc(170px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Empty State */
@@ -423,16 +440,16 @@ input, select, textarea {
 
 /* Sticky Bottom Bar */
 .sticky-bottom-bar {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 40;
-  background: rgba(13, 19, 33, 0.94);
+  background: rgba(13, 19, 33, 0.96);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-top: 1px solid var(--border-bold);
-  padding: 12px 16px max(16px, env(safe-area-inset-bottom)) 16px;
+  padding: 12px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
 }
 
@@ -1066,13 +1083,13 @@ input, select, textarea {
 
 .scanner-reticle-box {
   position: relative;
-  width: 290px;
-  height: 190px;
-  max-width: 82vw;
-  max-height: 50vh;
-  border-radius: 18px;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.48);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  width: 320px;
+  height: 160px;
+  max-width: 86vw;
+  max-height: 35vh;
+  border-radius: 16px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 .reticle-corner {

@@ -84,23 +84,27 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             Html5QrcodeSupportedFormats.EAN_8,
             Html5QrcodeSupportedFormats.UPC_A,
             Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
             Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.ITF,
             Html5QrcodeSupportedFormats.QR_CODE,
           ],
         });
         scannerRef.current = scanner;
 
-        // Full-frame 1080p scanning without qrbox crop downsampling or 1:1 aspect ratio constraint
+        // Optimized 720p stream with wide horizontal scan region (fast, responsive, no mobile lag)
         const scanConfig: Html5QrcodeCameraScanConfig = {
-          fps: 20,
+          fps: 15,
           disableFlip: false,
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            return {
+              width: Math.floor(viewfinderWidth * 0.88),
+              height: Math.floor(Math.min(minEdge * 0.65, 240)),
+            };
+          },
           videoConstraints: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           },
         };
 
