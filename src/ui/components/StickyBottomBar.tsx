@@ -49,24 +49,21 @@ export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
           <button
             type="button"
             className="btn-primary-action"
-            onClick={onOpenManualModal}
-            aria-label="Añadir artículo manual a la cesta"
+            onClick={onScanClick}
+            aria-label="Escanear código de barras"
           >
-            <Plus size={22} strokeWidth={2.5} />
-            <span>+ Añadir manual</span>
+            <Scan size={22} strokeWidth={2.5} />
+            <span>Escanear</span>
           </button>
 
           <button
             type="button"
-            className="btn-secondary-action disabled"
-            onClick={onScanClick}
-            disabled
-            title="El escaneo por cámara estará disponible en la Fase 2"
-            aria-label="Escanear código de barras. Próximamente en Fase 2."
+            className="btn-secondary-action"
+            onClick={onOpenManualModal}
+            aria-label="Añadir artículo manual a la cesta"
           >
-            <Scan size={18} />
-            <span>Escáner</span>
-            <span className="scan-phase-badge">Fase 2</span>
+            <Plus size={18} />
+            <span>+ Manual</span>
           </button>
         </div>
       </div>

@@ -1,22 +1,43 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingSession, Money, CartItem } from '../domain/index.js';
+import { ShoppingSession, Money, CartItem, BarcodeScannerHandler } from '../domain/index.js';
 import { LocalStorageShoppingSessionRepository } from '../infrastructure/persistence/web/LocalStorageShoppingSessionRepository.js';
+import { Haptics } from '../infrastructure/device/Haptics.js';
 import { Header } from './components/Header.js';
 import { CartList } from './components/CartList.js';
 import { StickyBottomBar } from './components/StickyBottomBar.js';
 import { ManualItemModal } from './components/ManualItemModal.js';
 import { EditPriceModal } from './components/EditPriceModal.js';
 import { FinishModal } from './components/FinishModal.js';
+import { ScannerModal } from './components/ScannerModal.js';
+import { ScanPricePromptModal } from './components/ScanPricePromptModal.js';
+import { ToastUndo } from './components/ToastUndo.js';
 
 const DEFAULT_STORE_NAME = 'Mi Supermercado';
 
+interface UndoState {
+  itemId: string;
+  previousQuantity: number;
+  itemName: string;
+}
+
 export const App: React.FC = () => {
   const repository = useMemo(() => new LocalStorageShoppingSessionRepository(), []);
+  const barcodeScannerHandler = useMemo(() => new BarcodeScannerHandler(2000), []);
 
   const [session, setSession] = useState<ShoppingSession | null>(null);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
+
+  // Scanner and ScanPrice state
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [pendingScanCode, setPendingScanCode] = useState<string | null>(null);
+  const [isScanPriceModalOpen, setIsScanPriceModalOpen] = useState(false);
+
+  // Undo Toast state
+  const [undoState, setUndoState] = useState<UndoState | null>(null);
+  const [toastMessage, setToastMessage] = useState<string>('');
+  const [isToastOpen, setIsToastOpen] = useState(false);
 
   // Hydrate active session on initial load
   useEffect(() => {
@@ -139,6 +160,81 @@ export const App: React.FC = () => {
     setIsFinishModalOpen(false);
   };
 
+  // Barcode scanning flow (Fase 2)
+  const handleBarcodeScanned = (barcode: string) => {
+    if (!session) return;
+
+    const trimmed = barcode.trim();
+    if (!trimmed) return;
+
+    if (!barcodeScannerHandler.canProcess(trimmed)) {
+      return;
+    }
+    barcodeScannerHandler.recordScan(trimmed);
+
+    // Look for existing item in active cart with matching barcode
+    const existingItem = session.items.find((item) => item.barcode === trimmed);
+
+    if (existingItem) {
+      // Existing item in cart: auto-increment +1, haptics, toast with undo
+      const { item } = session.scanBarcode(trimmed, existingItem.unitPrice, existingItem.name);
+      commitSession(session);
+      Haptics.triggerScanSuccess();
+
+      setUndoState({
+        itemId: item.id,
+        previousQuantity: existingItem.quantity,
+        itemName: existingItem.name,
+      });
+      setToastMessage(`Añadido: ${existingItem.name} (${item.quantity} uds en total)`);
+      setIsToastOpen(true);
+    } else {
+      // New barcode in cart: pause reader and request shelf price
+      setPendingScanCode(trimmed);
+      setIsScanPriceModalOpen(true);
+    }
+  };
+
+  const handleConfirmScanPrice = (name: string, price: Money) => {
+    if (!session || !pendingScanCode) return;
+
+    const { item } = session.scanBarcode(pendingScanCode, price, name);
+    commitSession(session);
+    Haptics.triggerScanSuccess();
+
+    setUndoState({
+      itemId: item.id,
+      previousQuantity: 0,
+      itemName: item.name,
+    });
+    setToastMessage(`Añadido: ${item.name}`);
+    setIsToastOpen(true);
+
+    setIsScanPriceModalOpen(false);
+    setPendingScanCode(null);
+  };
+
+  const handleCloseScanPriceModal = () => {
+    setIsScanPriceModalOpen(false);
+    setPendingScanCode(null);
+    barcodeScannerHandler.reset();
+  };
+
+  const handleUndo = () => {
+    if (!session || !undoState) return;
+
+    if (undoState.previousQuantity <= 0) {
+      session.removeItem(undoState.itemId);
+    } else {
+      session.updateItemQuantity(undoState.itemId, undoState.previousQuantity);
+    }
+    commitSession(session);
+
+    setUndoState(null);
+    setIsToastOpen(false);
+    barcodeScannerHandler.reset();
+  };
+
   if (!session) {
     return (
       <div className="app-container" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -173,10 +269,32 @@ export const App: React.FC = () => {
         />
       </main>
 
+      <ToastUndo
+        isOpen={isToastOpen}
+        message={toastMessage}
+        onUndo={handleUndo}
+        onClose={() => setIsToastOpen(false)}
+      />
+
       <StickyBottomBar
         total={total}
         itemCount={totalItemCount}
         onOpenManualModal={() => setIsManualModalOpen(true)}
+        onScanClick={() => setIsScannerOpen(true)}
+      />
+
+      <ScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScan={handleBarcodeScanned}
+        isPaused={isScanPriceModalOpen}
+      />
+
+      <ScanPricePromptModal
+        isOpen={isScanPriceModalOpen}
+        barcode={pendingScanCode || ''}
+        onClose={handleCloseScanPriceModal}
+        onConfirm={handleConfirmScanPrice}
       />
 
       <ManualItemModal
