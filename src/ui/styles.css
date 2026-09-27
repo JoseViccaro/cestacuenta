@@ -102,7 +102,10 @@ input, select, textarea {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
-  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+  padding-top: calc(20px + env(safe-area-inset-top, 0px));
+  padding-bottom: 14px;
+  padding-left: calc(16px + env(safe-area-inset-left, 0px));
+  padding-right: calc(16px + env(safe-area-inset-right, 0px));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -126,8 +129,8 @@ input, select, textarea {
   font-weight: 700;
   color: var(--text-main);
   background: transparent;
-  padding: 4px 8px;
-  margin-left: -8px;
+  padding: 4px 6px;
+  margin-left: 0;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   transition: all 0.15s ease;
