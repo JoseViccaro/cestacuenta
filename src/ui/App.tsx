@@ -22,8 +22,6 @@ import { ScannerModal } from './components/ScannerModal.js';
 import { ScanPricePromptModal } from './components/ScanPricePromptModal.js';
 import { ToastUndo } from './components/ToastUndo.js';
 import { HistoryModal } from './components/HistoryModal.js';
-import { UpdatePromptBanner } from './components/UpdatePromptBanner.js';
-import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate.js';
 
 const DEFAULT_STORE_NAME = 'Mi Supermercado';
 
@@ -63,9 +61,6 @@ export const App: React.FC = () => {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState<string>('');
-
-  // Live PWA Update detection
-  const { isUpdateAvailable, updateApp, dismissUpdate } = useServiceWorkerUpdate();
 
   // Hydrate active session on initial load
   useEffect(() => {
@@ -311,12 +306,6 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      <UpdatePromptBanner
-        isOpen={isUpdateAvailable}
-        onUpdate={updateApp}
-        onDismiss={dismissUpdate}
-      />
-
       <Header
         storeName={session.storeName || DEFAULT_STORE_NAME}
         onUpdateStoreName={handleUpdateStoreName}
