@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#334155" stroke-width="4" stroke-dasharray="8 8" />
+  <!-- Cart Body -->
+  <g transform="translate(60, 60) scale(0.76)" stroke="url(#accentGrad)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <circle cx="170" cy="420" r="28" fill="#10b981" />
+    <circle cx="360" cy="420" r="28" fill="#10b981" />
+    <path d="M50 70 h60 l55 240 h230 l45 -160 H145" />
+    <path d="M210 190 h140" stroke="#34d399" stroke-width="16" />
+    <path d="M210 240 h100" stroke="#34d399" stroke-width="16" />
+  </g>
+  <!-- Currency Coin badge -->
+  <g transform="translate(320, 90)">
+    <circle cx="65" cy="65" r="60" fill="#10b981" stroke="#0f172a" stroke-width="10" />
+    <text x="65" y="85" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="900" fill="#ffffff" text-anchor="middle">€</text>
+  </g>
+</svg>

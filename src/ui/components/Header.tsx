@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Store, Pencil, Check, Trash2, ShoppingBag, History } from 'lucide-react';
+import { Store, Pencil, Check, Trash2, ShoppingBag, History, Download } from 'lucide-react';
+import { usePwaInstall } from '../hooks/usePwaInstall';
 
 export interface HeaderProps {
   storeName: string;
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isEditingStore, setIsEditingStore] = useState(false);
   const [tempStoreName, setTempStoreName] = useState(storeName);
+  const { isInstallable, promptInstall } = usePwaInstall();
 
   const handleOpenHistory = onOpenHistory || onOpenHistoryModal;
 
@@ -98,6 +100,20 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="header-actions">
+        {isInstallable && (
+          <button
+            type="button"
+            className="btn-header-action primary"
+            onClick={promptInstall}
+            title="Instalar CestaCuenta como app"
+            aria-label="Instalar app en la pantalla de inicio"
+            style={{ backgroundColor: '#059669', color: '#ffffff' }}
+          >
+            <Download size={16} />
+            <span>Instalar</span>
+          </button>
+        )}
+
         {handleOpenHistory && (
           <button
             type="button"
