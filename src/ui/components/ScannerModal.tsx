@@ -75,6 +75,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       try {
         const scanner = new Html5Qrcode('qr-reader', {
           verbose: false,
+          useBarCodeDetectorIfSupported: true,
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: true,
           },
@@ -83,6 +84,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             Html5QrcodeSupportedFormats.EAN_8,
             Html5QrcodeSupportedFormats.UPC_A,
             Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
             Html5QrcodeSupportedFormats.CODE_128,
             Html5QrcodeSupportedFormats.CODE_39,
             Html5QrcodeSupportedFormats.ITF,
@@ -91,17 +93,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         });
         scannerRef.current = scanner;
 
+        // Full-frame 1080p scanning without qrbox crop downsampling or 1:1 aspect ratio constraint
         const scanConfig: Html5QrcodeCameraScanConfig = {
           fps: 20,
-          disableFlip: false, // Essential for laptop front-facing webcams (mirrored feed)
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            return {
-              width: Math.floor(minEdge * 0.9),
-              height: Math.floor(minEdge * 0.8), // taller box so barcode is covered easily
-            };
+          disableFlip: false,
+          videoConstraints: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
           },
-          aspectRatio: 1.0,
         };
 
         await scanner.start(
@@ -125,6 +125,20 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
         setIsCameraActive(true);
         setErrorMessage(null);
+
+        // Try applying continuous autofocus if supported by camera hardware
+        try {
+          const trackCaps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
+            focusMode?: string[];
+          };
+          if (trackCaps && 'focusMode' in trackCaps && Array.isArray(trackCaps.focusMode) && trackCaps.focusMode.includes('continuous')) {
+            await scanner.applyVideoConstraints({
+              advanced: [{ focusMode: 'continuous' } as unknown as MediaTrackConstraintSet],
+            });
+          }
+        } catch {
+          // Camera track continuous focus is optional
+        }
 
         // Check torch / flash capability
         try {
@@ -254,7 +268,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               <div className="reticle-corner bottom-right" />
               <div className="reticle-laser" />
             </div>
-            <p className="scanner-hint-text">Enfoca el código de barras dentro del marco</p>
+            <p className="scanner-hint-text">Enfoca a unos 15-20 cm · Evita reflejos de luz</p>
           </div>
         )}
 
