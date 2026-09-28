@@ -9,54 +9,78 @@ export interface ShelfTagResult {
 }
 
 /**
- * Regex matching unit rate patterns in supermarket tags:
- * e.g. "1 KILO: 5,769 €", "1 KG: 8,414 €", "1 LITRO: 1,50 €", "100 g: 0,85 €",
- * "PRECIO/KG: 5,76 €", "1,625 €/kg", "0,50 €/ud".
+ * Regex matching unit rate patterns in European / Spanish supermarket tags:
+ * e.g. "1 KILO: 5,769 €", "1 KG: 8,414 €", "1 kg = 3,78 €", "1 LITRO: 1,50 €", "100 g: 0,85 €",
+ * "PVP/KG: 1,35 €", "PRECIO/L: 1,05 €", "( 1,05 € / l )", "8,95 €/L", "1,625 €/kg", "0,50 €/ud".
  */
-const UNIT_RATE_REGEX =
-  /(?:(?:1|100)\s*(?:KILO|KG|LITRO|LITROS|LT|L|UD|UDS|UNIDAD|UNIDADES|G|GR)|PRECIO\s*(?:\/|POR)?\s*(?:KG|KILO|L|UD)|PVP\s*(?:\/|POR)?\s*(?:KG|KILO|L|UD))\s*[:=]?\s*\d+(?:[.,]\d+)?\s*(?:€|EUR)?|\b\d+(?:[.,]\d+)?\s*(?:€|EUR)?\s*\/\s*(?:kilo|kg|kilos|litro|litros|lt|l|ud|uds|un|unidad|unidades|100g)\b/i;
+export const UNIT_RATE_REGEX =
+  /(?:\(?\s*(?:(?:1|100)\s*(?:KILO|KILOS|KG|LITRO|LITROS|LT|L|UD|UDS|UNIDAD|UNIDADES|G|GR)|PRECIO\s*(?:\/|POR|\s)\s*(?:KG|KILO|KILOS|L|LT|LITRO|LITROS|UD|UDS|UNIDAD|UNIDADES|100\s*G|100\s*GR|G|GR)|PVP\s*(?:\/|POR|\s)\s*(?:KG|KILO|KILOS|L|LT|LITRO|LITROS|UD|UDS|UNIDAD|UNIDADES|100\s*G|100\s*GR|G|GR))\s*[:=]?\s*\d+(?:[.,]\d+)?\s*(?:€|EUR)?\s*\)?|\(?\s*\d+(?:[.,]\d+)?\s*(?:€|EUR)?\s*\/\s*(?:kilo|kilos|kg|litro|litros|lt|l|ud|uds|un|unidad|unidades|100\s*g|100\s*gr|g|gr)\b\s*\)?)/i;
 
 /**
- * Regex matching standalone unit rate headers: e.g. "1 KILO:", "1 KG:".
+ * Regex matching standalone unit rate headers: e.g. "1 KILO:", "1 KG:", "PVP/KG:".
  */
-const UNIT_RATE_HEADER_REGEX =
-  /^(?:1|100)\s*(?:KILO|KG|LITRO|LITROS|LT|L|UD|UDS|UNIDAD|UNIDADES|G|GR)\s*[:=]?$/i;
+export const UNIT_RATE_HEADER_REGEX =
+  /^\(?\s*(?:(?:1|100)\s*(?:KILO|KILOS|KG|LITRO|LITROS|LT|L|UD|UDS|UNIDAD|UNIDADES|G|GR)|PRECIO\s*(?:\/|POR|\s)\s*(?:KG|KILO|KILOS|L|LT|LITRO|LITROS|UD|UDS|UNIDAD|UNIDADES|100\s*G|100\s*GR|G|GR)|PVP\s*(?:\/|POR|\s)\s*(?:KG|KILO|KILOS|L|LT|LITRO|LITROS|UD|UDS|UNIDAD|UNIDADES|100\s*G|100\s*GR|G|GR))\s*[:=]?\s*\)?$/i;
+
+/**
+ * Regex matching previous price / offer discount lines to discard:
+ * e.g. "ANTES 2,49 €", "ANTES: 2,49 €", "ERA 2,49 €", "PRECIO ANTERIOR 2,49 €".
+ */
+export const OLD_PRICE_REGEX =
+  /\(?\s*(?:ANTES|ERA|PRECIO\s*ANTERIOR)\s*[:.]?\s*(?:€\s*)?\d+(?:[.,]\d+)?\s*(?:€|EUR)?\s*\)?/i;
+
+export const OLD_PRICE_LINE_REGEX =
+  /^\(?\s*(?:ANTES|ERA|PRECIO\s*ANTERIOR)\s*[:.]?\s*(?:€\s*)?\d+(?:[.,]\d+)?\s*(?:€|EUR)?\s*\)?$/i;
+
+/**
+ * Regex matching promotional price lines:
+ * e.g. "AHORA 1,99 €", "AHORA: 1,99 €", "OFERTA 1,99 €", "PRECIO CLUB 1,99 €", "HOY 1,99 €".
+ */
+export const PROMO_PRICE_LINE_REGEX =
+  /^\(?\s*(?:(?:AHORA|OFERTA|PRECIO\s*CLUB|PRECIO\s*ACTUAL|HOY)\s*[:.]?\s*)(?:€\s*)?(\d{1,3}[.,]\d{1,2})\s*(?:€|EUR)?\s*\)?$/i;
+
+/**
+ * Regex matching standard price lines:
+ * e.g. "1,05 €", "1.89 €", "1,75 €", "1,50", "PVP 1,35 €".
+ */
+export const STANDARD_PRICE_LINE_REGEX =
+  /^\(?\s*(?:(?:P\.?V\.?P\.?|PRECIO)\s*[:.]?\s*)?(?:€\s*)?(\d{1,3}[.,]\d{1,2})\s*(?:€|EUR)?\s*\)?$/i;
 
 /**
  * Regex matching internal reference codes:
  * Standalone 5 to 8 digit codes (e.g. Mercadona 6-digit codes: "098335", "238120", "707633"),
- * or prefixed with REF, ART, COD, SKU, LOTE.
+ * or prefixed with REF, ART, COD, SKU, LOTE (4 to 8 digits, e.g. "REF 482910", "ART 84729").
  */
-const INTERNAL_CODE_LINE_REGEX =
-  /^(?:(?:REF|ART|COD|CÓD|SKU|LOTE)\.?\s*[:.]?\s*)?(\d{5,8})$/i;
+export const INTERNAL_CODE_LINE_REGEX =
+  /^\(?\s*(?:(?:REF|ART|ART[IÍ]CULO|COD|C[OÓ]D|C[OÓ]DIGO|SKU|LOTE|REFERENCIA)\.?\s*[:.]?\s*(\d{4,8})|(\d{5,8}))\s*\)?$/i;
 
 /**
  * Regex matching standalone retail barcodes (8, 12, 13, 14 digits).
  */
-const BARCODE_LINE_REGEX = /^\d{8,14}$/;
+export const BARCODE_LINE_REGEX = /^\d{8,14}$/;
 
 /**
- * Regex matching dates (e.g. "28/09/24", "12-03-2026", "01.05.25").
+ * Regex matching dates (e.g. "28/09/24", "12-03-2026", "01/02/2026", "01.05.25").
  */
-const DATE_LINE_REGEX =
-  /^(?:FECHA\s*[:.]?\s*)?\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/i;
+export const DATE_LINE_REGEX =
+  /^\(?\s*(?:FECHA\s*[:.]?\s*)?\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s*\)?$/i;
 
 /**
  * Regex matching store brands, headers, and regulatory boilerplate to strip from product titles.
  */
-const STORE_NOISE_LINE_REGEX =
-  /^(?:MERCADONA(?:\s*,?\s*S\.?A\.?)?|CONSUM|CARREFOUR|DIA|LIDL|ALDI|EROSKI|ALCAMPO|(?:P\.?V\.?P\.?|PRECIO|OFERTA|AHORA|ANTES)\s*(?:IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA)?|IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA|SUGERENCIA\s*DE\s*PRESENTACI[OÓ]N)$/i;
+export const STORE_NOISE_LINE_REGEX =
+  /^\(?\s*(?:MERCADONA(?:\s*,?\s*S\.?A\.?)?|CONSUM(?:\s*,?\s*S\.?COOP\.?)?|CARREFOUR|DIA|LIDL|ALDI|EROSKI|ALCAMPO|AHORRAMAS|HIPERDINO|BONPREU|CAPRABO|(?:P\.?V\.?P\.?|PRECIO|OFERTA|AHORA|ANTES)\s*(?:IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA)?|IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA|SUGERENCIA\s*DE\s*PRESENTACI[OÓ]N|PRECIO\s*CLUB|OFERTA|PROMOCI[OÓ]N|DESCUENTO|SUPERPRECIO)\s*\)?$/i;
 
 /**
  * Regex matching measurement weights/volumes (e.g. "208 g", "260 g", "1,2 kg", "1L").
- * These should NOT be mistaken for prices.
+ * These should NOT be mistaken for prices when isolated on a line.
  */
-const WEIGHT_VOLUME_REGEX =
-  /^\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|mg|kg|kilos?|l|lt|litros?|ml|cl|dl|%|pz|piezas?)$/i;
+export const WEIGHT_VOLUME_REGEX =
+  /^\(?\s*\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|mg|kg|kilos?|l|lt|litros?|ml|cl|dl|%|pz|piezas?)\s*\)?$/i;
 
 /**
  * Extracts unit rate text if present in the given OCR text.
- * e.g. "1 KILO: 8,414 €" or "1,625 €/kg".
+ * e.g. "1 KILO: 8,414 €", "1 kg = 3,78 €", "8,95 €/L", or "( 1,05 € / l )".
  */
 export function extractUnitRate(text: string): string | null {
   if (!text || typeof text !== 'string') return null;
@@ -75,7 +99,7 @@ export function extractUnitRate(text: string): string | null {
 }
 
 /**
- * Extracts internal product / item code if present (e.g. "098335", "238120", "707633").
+ * Extracts internal product / item code if present (e.g. "482910", "84729", "238120").
  */
 export function extractInternalCode(text: string): string | null {
   if (!text || typeof text !== 'string') return null;
@@ -84,15 +108,15 @@ export function extractInternalCode(text: string): string | null {
   for (const line of lines) {
     const match = line.match(INTERNAL_CODE_LINE_REGEX);
     if (match) {
-      return match[1] || match[0];
+      return match[1] || match[2] || match[0].trim();
     }
   }
 
-  // Search for standalone 5-8 digit sequences not preceded/followed by decimals or measurement units
-  const regex = /(?:(?:REF|ART|COD|CÓD|SKU|LOTE)\.?\s*[:.]?\s*)?(\b\d{5,8}\b)/i;
+  // Search for standalone 5-8 digit sequences or prefixed 4-8 digit sequences
+  const regex = /(?:(?:REF|ART|ART[IÍ]CULO|COD|C[OÓ]D|C[OÓ]DIGO|SKU|LOTE|REFERENCIA)\.?\s*[:.]?\s*(\b\d{4,8}\b)|(\b\d{5,8}\b))/i;
   const match = text.match(regex);
   if (match) {
-    return match[1];
+    return match[1] || match[2];
   }
 
   return null;
@@ -100,19 +124,39 @@ export function extractInternalCode(text: string): string | null {
 
 /**
  * Extracts the primary selling price from supermarket shelf tag text as Money.
- * Disregards unit rates (e.g. "1 KILO: 8,414 €"), internal codes, barcodes, and package weights ("1,2 kg").
+ * Prioritizes active offer/promo prices ("AHORA 1,99 €"), disregards old promo prices ("ANTES 2,49 €"),
+ * unit rates (e.g. "1 KILO: 8,414 €", "( 1,05 € / l )", "8,95 €/L"), internal codes, barcodes, and package weights ("1,2 kg").
  */
 export function extractPrice(text: string): Money | null {
   if (!text || typeof text !== 'string') return null;
 
   const lines = text.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
 
-  // First pass: look for a line that represents the primary selling price
+  // Pass 1A: Look for an explicit promotional / offer current price (AHORA, OFERTA, PRECIO CLUB, etc.)
   for (const line of lines) {
-    // Skip unit rate lines, internal codes, barcodes, dates, noise, and weight measures
+    if (OLD_PRICE_LINE_REGEX.test(line) || UNIT_RATE_REGEX.test(line) || UNIT_RATE_HEADER_REGEX.test(line)) {
+      continue;
+    }
+    const promoMatch = line.match(PROMO_PRICE_LINE_REGEX);
+    if (promoMatch && promoMatch[1]) {
+      try {
+        const money = Money.parse(promoMatch[1]);
+        if (money.cents > 0) {
+          return money;
+        }
+      } catch {
+        // Continue
+      }
+    }
+  }
+
+  // Pass 1B: Look for a standard selling price line
+  for (const line of lines) {
     if (
       UNIT_RATE_REGEX.test(line) ||
       UNIT_RATE_HEADER_REGEX.test(line) ||
+      OLD_PRICE_LINE_REGEX.test(line) ||
+      OLD_PRICE_REGEX.test(line) ||
       INTERNAL_CODE_LINE_REGEX.test(line) ||
       BARCODE_LINE_REGEX.test(line) ||
       DATE_LINE_REGEX.test(line) ||
@@ -122,11 +166,7 @@ export function extractPrice(text: string): Money | null {
       continue;
     }
 
-    // Check if line is purely or primarily a price: e.g. "1,50 €", "1.75 €", "1,75€", "1,50", "PVP 1,50 €"
-    const priceLineMatch = line.match(
-      /^(?:(?:P\.?V\.?P\.?|PRECIO|AHORA|OFERTA)\s*[:.]?\s*)?(?:€\s*)?(\d{1,3}[.,]\d{1,2})\s*(?:€|EUR)?$/i
-    );
-
+    const priceLineMatch = line.match(STANDARD_PRICE_LINE_REGEX);
     if (priceLineMatch && priceLineMatch[1]) {
       try {
         const money = Money.parse(priceLineMatch[1]);
@@ -139,19 +179,22 @@ export function extractPrice(text: string): Money | null {
     }
   }
 
-  // Second pass: general price extraction by removing unit rate and codes first
+  // Pass 2: General price extraction by removing old prices, unit rates, codes and weights first
   let cleaned = text;
 
-  // Mask unit rates
-  cleaned = cleaned.replace(
-    new RegExp(UNIT_RATE_REGEX.source, 'gi'),
-    ' '
-  );
+  // Mask old prices (e.g. "ANTES 2,49 €", "ERA 2,49 €")
+  cleaned = cleaned.replace(new RegExp(OLD_PRICE_REGEX.source, 'gi'), ' ');
+
+  // Mask unit rates (e.g. "( 1,05 € / l )", "1 kg = 3,78 €", "8,95 €/L")
+  cleaned = cleaned.replace(new RegExp(UNIT_RATE_REGEX.source, 'gi'), ' ');
 
   // Mask barcodes and internal codes
   cleaned = cleaned.replace(/(?<!\d)\d{5,14}(?!\d)/g, ' ');
 
-  // Mask standalone weights/volumes (e.g. "1,2 kg", "208 g", "500ml") so decimal weights aren't parsed as prices
+  // Mask standalone dates
+  cleaned = cleaned.replace(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g, ' ');
+
+  // Mask standalone weights/volumes so decimal weights aren't parsed as prices
   cleaned = cleaned.replace(
     /(?<![€/\w])\b\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|mg|kg|kilos?|l|lt|litros?|ml|cl|dl|%|pz|piezas?)\b(?!\s*[/€])/gi,
     ' '
@@ -187,7 +230,8 @@ export function extractPrice(text: string): Money | null {
 
 /**
  * Extracts a clean product title from supermarket shelf tag text.
- * Filters out price lines, unit rates, internal codes, barcodes, dates, and noise.
+ * Filters out price lines, unit rates, internal codes, barcodes, dates, and store noise.
+ * Retains brand, product description, and package size/weight (e.g. "208 g", "1L", "PACK 4").
  */
 export function extractName(text: string): string | null {
   if (!text || typeof text !== 'string') return null;
@@ -206,9 +250,11 @@ export function extractName(text: string): string | null {
     } else if (
       !UNIT_RATE_REGEX.test(line) &&
       !UNIT_RATE_HEADER_REGEX.test(line) &&
+      !OLD_PRICE_LINE_REGEX.test(line) &&
+      !PROMO_PRICE_LINE_REGEX.test(line) &&
+      !STANDARD_PRICE_LINE_REGEX.test(line) &&
       !DATE_LINE_REGEX.test(line) &&
-      !STORE_NOISE_LINE_REGEX.test(line) &&
-      !/^(?:(?:P\.?V\.?P\.?|PRECIO|AHORA|OFERTA)\s*[:.]?\s*)?(?:€\s*)?\d{1,3}[.,]\d{1,2}\s*(?:€|EUR)?$/i.test(line)
+      !STORE_NOISE_LINE_REGEX.test(line)
     ) {
       if (firstCandidateNameIndex === -1) firstCandidateNameIndex = i;
     }
@@ -237,28 +283,54 @@ export function extractName(text: string): string | null {
       continue;
     }
 
-    // Skip store name & regulatory noise
+    // Skip store name & regulatory noise lines
     if (STORE_NOISE_LINE_REGEX.test(line)) {
       continue;
     }
 
-    // Skip standalone price lines
-    if (
-      /^(?:(?:P\.?V\.?P\.?|PRECIO|AHORA|OFERTA)\s*[:.]?\s*)?(?:€\s*)?\d{1,3}[.,]\d{1,2}\s*(?:€|EUR)?$/i.test(
-        line
-      )
-    ) {
+    // Skip old promo price lines
+    if (OLD_PRICE_LINE_REGEX.test(line)) {
+      continue;
+    }
+
+    // Skip promo and standard price lines
+    if (PROMO_PRICE_LINE_REGEX.test(line) || STANDARD_PRICE_LINE_REGEX.test(line)) {
       continue;
     }
 
     // Clean inline noise from the line: remove standalone codes, dates, euro symbols with prices
     let cleanedLine = line;
+
+    // Remove inline boilerplate phrases
+    cleanedLine = cleanedLine.replace(
+      /\b(?:PRECIO\s*CLUB|IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA|SUGERENCIA\s*DE\s*PRESENTACI[OÓ]N)\b/gi,
+      ''
+    );
+
+    // Remove old price phrases inline (e.g. "ANTES 2,49 €")
+    cleanedLine = cleanedLine.replace(
+      /\b(?:ANTES|ERA|PRECIO\s*ANTERIOR)\s*[:.]?\s*(?:€\s*)?\d+(?:[.,]\d+)?\s*(?:€|EUR)?\b/gi,
+      ''
+    );
+
+    // Remove standalone promo prefixes at start of line (e.g. "AHORA:", "OFERTA:")
+    cleanedLine = cleanedLine.replace(/^(?:AHORA|OFERTA|PRECIO\s*CLUB)\s*[:.]?\s*/i, '');
+
     // Remove standalone dates
     cleanedLine = cleanedLine.replace(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g, '');
+
     // Remove standalone prices with currency: e.g. "1,50 €" or "€ 1,50"
     cleanedLine = cleanedLine.replace(/(?:€|EUR)\s*\d{1,3}[.,]\d{1,2}\b|\b\d{1,3}[.,]\d{1,2}\s*(?:€|EUR)/gi, '');
+
+    // Remove inline code prefixes (e.g. "REF 482910", "ART 84729")
+    cleanedLine = cleanedLine.replace(
+      /\b(?:REF|ART|ART[IÍ]CULO|COD|C[OÓ]D|C[OÓ]DIGO|SKU|LOTE|REFERENCIA)\.?\s*[:.]?\s*\d{4,8}\b/gi,
+      ''
+    );
+
     // Remove standalone 5-8 digit internal codes
     cleanedLine = cleanedLine.replace(/(?<!\d)\d{5,8}(?!\d)/g, '');
+
     // Remove excess punctuation and spaces
     cleanedLine = cleanedLine.replace(/[=~_]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
 

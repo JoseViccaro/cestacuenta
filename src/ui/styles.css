@@ -985,15 +985,55 @@ input, select, textarea {
 /* Top bar controls */
 .scanner-top-bar {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: max(16px, env(safe-area-inset-top, 0px)) 16px 12px 16px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0) 100%);
+  gap: 8px;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 16px 12px 16px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.5) 75%, rgba(0, 0, 0, 0) 100%);
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 10;
+}
+
+.scanner-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.scanner-cart-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.cart-indicator-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cart-indicator-amount {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: -0.01em;
+}
+
+.cart-indicator-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
 }
 
 .scanner-top-title {
@@ -1435,6 +1475,56 @@ input, select, textarea {
   border-radius: var(--radius-full);
   text-align: center;
   max-width: 90vw;
+}
+
+.scanner-autoadd-wrap {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scanner-autoadd-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.75);
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.scanner-autoadd-label:hover {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.scanner-autoadd-checkbox {
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.scanner-recent-toast {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(16, 185, 129, 0.92);
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.5);
+  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .shelf-tag-preview-card {

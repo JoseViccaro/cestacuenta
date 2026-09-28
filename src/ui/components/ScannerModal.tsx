@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Money, ShelfTagResult } from '../../domain/index.js';
 import { OnDeviceOcrService } from '../../infrastructure/ocr/OnDeviceOcrService.js';
+import { Haptics } from '../../infrastructure/device/Haptics.js';
 
 export interface ScannerModalProps {
   isOpen: boolean;
@@ -26,6 +27,8 @@ export interface ScannerModalProps {
   onScan: (barcode: string) => void;
   onShelfTagScanned?: (tag: { name: string; price: Money }) => void;
   isPaused?: boolean;
+  cartTotal?: Money;
+  cartItemCount?: number;
 }
 
 export const ScannerModal: React.FC<ScannerModalProps> = ({
@@ -34,9 +37,11 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   onScan,
   onShelfTagScanned,
   isPaused = false,
+  cartTotal,
+  cartItemCount = 0,
 }) => {
-  // Mode selection: 'barcode' (1D Html5Qrcode) vs 'shelftag' (Shelf tag OCR)
-  const [scanMode, setScanMode] = useState<'barcode' | 'shelftag'>('barcode');
+  // Mode selection: 'shelftag' (Shelf tag OCR, default) vs 'barcode' (1D Html5Qrcode)
+  const [scanMode, setScanMode] = useState<'barcode' | 'shelftag'>('shelftag');
 
   // Barcode scanner refs & state
   const barcodeScannerRef = useRef<Html5Qrcode | null>(null);
@@ -66,6 +71,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [detectedTag, setDetectedTag] = useState<ShelfTagResult | null>(null);
   const [editableName, setEditableName] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [autoAdd, setAutoAdd] = useState(false);
+  const [recentAddedToast, setRecentAddedToast] = useState<{ name: string; price: string } | null>(null);
 
   // --- Stop Functions ---
   const stopBarcodeScanner = useCallback(async () => {
@@ -337,10 +344,12 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       setErrorMessage(null);
       setFeedbackMessage(null);
       setDetectedTag(null);
+      setRecentAddedToast(null);
       setIsPermissionDenied(false);
       setIsCameraNotFound(false);
       setManualCode('');
       setManualError(null);
+      setScanMode('shelftag');
       return;
     }
 
@@ -465,9 +474,28 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       const { text, tag } = await OnDeviceOcrService.recognizeShelfTagFromCanvas(canvas);
 
       if (tag && tag.price && tag.name) {
-        setDetectedTag(tag);
-        setEditableName(tag.name);
-        setFeedbackMessage(null);
+        Haptics.triggerScanSuccess();
+
+        if (autoAdd) {
+          if (onShelfTagScanned) {
+            onShelfTagScanned({
+              name: tag.name,
+              price: tag.price,
+            });
+          }
+          setRecentAddedToast({
+            name: tag.name,
+            price: tag.price.format(),
+          });
+          setTimeout(() => setRecentAddedToast(null), 2500);
+          setDetectedTag(null);
+          setEditableName('');
+          setFeedbackMessage(null);
+        } else {
+          setDetectedTag(tag);
+          setEditableName(tag.name);
+          setFeedbackMessage(null);
+        }
       } else {
         if (text && text.trim().length > 0) {
           setFeedbackMessage(
@@ -492,12 +520,19 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     if (!detectedTag) return;
     const finalName = editableName.trim() || detectedTag.name;
 
+    Haptics.triggerScanSuccess();
     if (onShelfTagScanned) {
       onShelfTagScanned({
         name: finalName,
         price: detectedTag.price,
       });
     }
+
+    setRecentAddedToast({
+      name: finalName,
+      price: detectedTag.price.format(),
+    });
+    setTimeout(() => setRecentAddedToast(null), 2500);
 
     // Reset preview so the user can scan the next tag immediately
     setDetectedTag(null);
@@ -520,52 +555,65 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       aria-modal="true"
       aria-label="Escáner de productos y etiquetas"
     >
-      {/* Top action bar: Mode switcher, Torch & Close */}
+      {/* Top action bar: Mode switcher, Running Cart Header & Controls */}
       <div className="scanner-top-bar">
-        <div className="scanner-mode-switch" role="tablist" aria-label="Modo de escaneo">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={scanMode === 'barcode'}
-            className={`scanner-mode-tab ${scanMode === 'barcode' ? 'active' : ''}`}
-            onClick={() => handleSwitchMode('barcode')}
-          >
-            <Barcode size={18} />
-            <span>Código de barras</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={scanMode === 'shelftag'}
-            className={`scanner-mode-tab ${scanMode === 'shelftag' ? 'active' : ''}`}
-            onClick={() => handleSwitchMode('shelftag')}
-          >
-            <ScanText size={18} />
-            <span>Etiqueta de estantería</span>
-          </button>
-        </div>
-
-        <div className="scanner-top-controls">
-          {isTorchSupported && isCameraActive && (
+        <div className="scanner-top-row">
+          <div className="scanner-mode-switch" role="tablist" aria-label="Modo de escaneo">
             <button
               type="button"
-              className={`scanner-control-btn ${isTorchOn ? 'active' : ''}`}
-              onClick={handleToggleTorch}
-              aria-label={isTorchOn ? 'Apagar linterna' : 'Encender linterna'}
-              title={isTorchOn ? 'Apagar linterna' : 'Encender linterna'}
+              role="tab"
+              aria-selected={scanMode === 'shelftag'}
+              className={`scanner-mode-tab ${scanMode === 'shelftag' ? 'active' : ''}`}
+              onClick={() => handleSwitchMode('shelftag')}
             >
-              {isTorchOn ? <ZapOff size={22} /> : <Zap size={22} />}
+              <ScanText size={18} />
+              <span>Etiqueta</span>
             </button>
-          )}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scanMode === 'barcode'}
+              className={`scanner-mode-tab ${scanMode === 'barcode' ? 'active' : ''}`}
+              onClick={() => handleSwitchMode('barcode')}
+            >
+              <Barcode size={18} />
+              <span>Código</span>
+            </button>
+          </div>
 
-          <button
-            type="button"
-            className="scanner-control-btn close-btn"
-            onClick={onClose}
-            aria-label="Cerrar escáner"
-          >
-            <X size={24} />
-          </button>
+          <div className="scanner-top-controls">
+            {isTorchSupported && isCameraActive && (
+              <button
+                type="button"
+                className={`scanner-control-btn ${isTorchOn ? 'active' : ''}`}
+                onClick={handleToggleTorch}
+                aria-label={isTorchOn ? 'Apagar linterna' : 'Encender linterna'}
+                title={isTorchOn ? 'Apagar linterna' : 'Encender linterna'}
+              >
+                {isTorchOn ? <ZapOff size={22} /> : <Zap size={22} />}
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="scanner-control-btn close-btn"
+              onClick={onClose}
+              aria-label="Cerrar escáner"
+            >
+              <X size={24} />
+            </button>
+          </div>
+        </div>
+
+        {/* Real-time session total & item count header */}
+        <div className="scanner-cart-indicator" aria-live="polite">
+          <span className="cart-indicator-label">Cesta:</span>
+          <span className="cart-indicator-amount">
+            {cartTotal ? cartTotal.format() : '0,00 €'}
+          </span>
+          <span className="cart-indicator-count">
+            ({cartItemCount} {cartItemCount === 1 ? 'ud' : 'uds'})
+          </span>
         </div>
       </div>
 
@@ -734,7 +782,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             </div>
           </div>
         ) : (
-          /* Prominent Shelf Tag Capture Button */
+          /* Prominent Shelf Tag Capture Button & Auto-add controls */
           <div className="scanner-shelf-bottom">
             <button
               type="button"
@@ -755,6 +803,28 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 </>
               )}
             </button>
+
+            <div className="scanner-autoadd-wrap">
+              <label className="scanner-autoadd-label">
+                <input
+                  type="checkbox"
+                  checked={autoAdd}
+                  onChange={(e) => setAutoAdd(e.target.checked)}
+                  className="scanner-autoadd-checkbox"
+                />
+                <span>Auto-añadir al detectar</span>
+              </label>
+            </div>
+
+            {recentAddedToast && (
+              <div className="scanner-recent-toast" role="status">
+                <Check size={18} />
+                <span>
+                  Añadido: <strong>{recentAddedToast.name}</strong> ({recentAddedToast.price})
+                </span>
+              </div>
+            )}
+
             {feedbackMessage && (
               <p className="shelf-feedback-text">{feedbackMessage}</p>
             )}

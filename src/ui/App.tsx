@@ -369,6 +369,8 @@ export const App: React.FC = () => {
         onScan={handleBarcodeScanned}
         onShelfTagScanned={handleShelfTagScanned}
         isPaused={isScanPriceModalOpen}
+        cartTotal={total}
+        cartItemCount={totalItemCount}
       />
 
       <ScanPricePromptModal
