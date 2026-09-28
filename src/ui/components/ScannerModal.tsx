@@ -4,12 +4,27 @@ import {
   Html5QrcodeSupportedFormats,
   Html5QrcodeCameraScanConfig,
 } from 'html5-qrcode';
-import { X, Zap, ZapOff, Keyboard, CameraOff, AlertCircle } from 'lucide-react';
+import {
+  X,
+  Zap,
+  ZapOff,
+  Keyboard,
+  CameraOff,
+  AlertCircle,
+  Barcode,
+  ScanText,
+  Loader2,
+  Check,
+  RotateCcw,
+} from 'lucide-react';
+import { Money, ShelfTagResult } from '../../domain/index.js';
+import { OnDeviceOcrService } from '../../infrastructure/ocr/OnDeviceOcrService.js';
 
 export interface ScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onScan: (barcode: string) => void;
+  onShelfTagScanned?: (tag: { name: string; price: Money }) => void;
   isPaused?: boolean;
 }
 
@@ -17,56 +32,86 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   isOpen,
   onClose,
   onScan,
+  onShelfTagScanned,
   isPaused = false,
 }) => {
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+  // Mode selection: 'barcode' (1D Html5Qrcode) vs 'shelftag' (Shelf tag OCR)
+  const [scanMode, setScanMode] = useState<'barcode' | 'shelftag'>('barcode');
+
+  // Barcode scanner refs & state
+  const barcodeScannerRef = useRef<Html5Qrcode | null>(null);
   const isPausedRef = useRef(isPaused);
   isPausedRef.current = isPaused;
 
+  // Shelf tag camera refs & state
+  const shelfVideoRef = useRef<HTMLVideoElement>(null);
+  const shelfStreamRef = useRef<MediaStream | null>(null);
+  const shelfReticleRef = useRef<HTMLDivElement>(null);
+
+  // Common camera states
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPermissionDenied, setIsPermissionDenied] = useState(false);
   const [isCameraNotFound, setIsCameraNotFound] = useState(false);
   const [isTorchSupported, setIsTorchSupported] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
+
+  // Barcode manual input state
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [manualError, setManualError] = useState<string | null>(null);
 
-  const stopScanner = useCallback(async () => {
-    if (scannerRef.current) {
+  // Shelf tag OCR state
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [detectedTag, setDetectedTag] = useState<ShelfTagResult | null>(null);
+  const [editableName, setEditableName] = useState('');
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  // --- Stop Functions ---
+  const stopBarcodeScanner = useCallback(async () => {
+    if (barcodeScannerRef.current) {
       try {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop();
+        if (barcodeScannerRef.current.isScanning) {
+          await barcodeScannerRef.current.stop();
         }
-        scannerRef.current.clear();
+        barcodeScannerRef.current.clear();
       } catch (err) {
-        console.warn('Error stopping scanner:', err);
+        console.warn('Error stopping barcode scanner:', err);
       } finally {
-        scannerRef.current = null;
-        setIsCameraActive(false);
-        setIsTorchOn(false);
+        barcodeScannerRef.current = null;
       }
     }
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    if (!isOpen) {
-      stopScanner();
-      setShowManualInput(false);
-      setErrorMessage(null);
-      setIsPermissionDenied(false);
-      setIsCameraNotFound(false);
-      setManualCode('');
-      setManualError(null);
-      return;
+  const stopShelfCamera = useCallback(() => {
+    if (shelfStreamRef.current) {
+      shelfStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // Ignore
+        }
+      });
+      shelfStreamRef.current = null;
     }
+    if (shelfVideoRef.current) {
+      shelfVideoRef.current.srcObject = null;
+    }
+  }, []);
 
-    const initScanner = async () => {
+  const stopAllCameras = useCallback(async () => {
+    await stopBarcodeScanner();
+    stopShelfCamera();
+    setIsCameraActive(false);
+    setIsTorchOn(false);
+    setIsTorchSupported(false);
+  }, [stopBarcodeScanner, stopShelfCamera]);
+
+  // --- Start Barcode Scanner ---
+  const startBarcodeScanner = useCallback(
+    async (isMounted: boolean) => {
       // Small timeout to guarantee DOM node #qr-reader is mounted
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 60));
       if (!isMounted) return;
 
       const element = document.getElementById('qr-reader');
@@ -88,9 +133,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             Html5QrcodeSupportedFormats.QR_CODE,
           ],
         });
-        scannerRef.current = scanner;
+        barcodeScannerRef.current = scanner;
 
-        // Optimized 720p stream with wide horizontal scan region (fast, responsive, no mobile lag)
         const scanConfig: Html5QrcodeCameraScanConfig = {
           fps: 15,
           disableFlip: false,
@@ -123,28 +167,33 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         );
 
         if (!isMounted) {
-          await stopScanner();
+          await stopBarcodeScanner();
           return;
         }
 
         setIsCameraActive(true);
         setErrorMessage(null);
 
-        // Try applying continuous autofocus if supported by camera hardware
+        // Continuous focus
         try {
           const trackCaps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
             focusMode?: string[];
           };
-          if (trackCaps && 'focusMode' in trackCaps && Array.isArray(trackCaps.focusMode) && trackCaps.focusMode.includes('continuous')) {
+          if (
+            trackCaps &&
+            'focusMode' in trackCaps &&
+            Array.isArray(trackCaps.focusMode) &&
+            trackCaps.focusMode.includes('continuous')
+          ) {
             await scanner.applyVideoConstraints({
               advanced: [{ focusMode: 'continuous' } as unknown as MediaTrackConstraintSet],
             });
           }
         } catch {
-          // Camera track continuous focus is optional
+          // Ignore
         }
 
-        // Check torch / flash capability
+        // Torch support check
         try {
           let torchAvailable = false;
           const trackCaps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
@@ -173,7 +222,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
         if (errName === 'NotAllowedError' || errMsg.includes('Permission denied')) {
           setIsPermissionDenied(true);
-          setErrorMessage('Permiso de cámara denegado. Puedes usar la entrada manual sin interrumpir tu compra.');
+          setErrorMessage('Permiso de cámara denegado. Puedes usar la entrada manual.');
           setShowManualInput(true);
         } else if (errName === 'NotFoundError' || errMsg.includes('DevicesNotFoundError')) {
           setIsCameraNotFound(true);
@@ -184,29 +233,159 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           setShowManualInput(true);
         }
       }
-    };
+    },
+    [onScan, stopBarcodeScanner]
+  );
 
-    initScanner();
+  // --- Start Shelf Tag Camera ---
+  const startShelfTagCamera = useCallback(async (isMounted: boolean) => {
+    // Check mediaDevices support
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      if (isMounted) {
+        setErrorMessage('Tu navegador o dispositivo no soporta acceso a la cámara.');
+      }
+      return;
+    }
+
+    try {
+      // High-resolution stream for sharp OCR reading of small text
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+
+      if (!isMounted) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      shelfStreamRef.current = stream;
+
+      if (shelfVideoRef.current) {
+        shelfVideoRef.current.srcObject = stream;
+        try {
+          await shelfVideoRef.current.play();
+        } catch {
+          // Autoplay fallback
+        }
+      }
+
+      setIsCameraActive(true);
+      setErrorMessage(null);
+
+      // Check torch capability
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack && typeof videoTrack.getCapabilities === 'function') {
+        try {
+          const capabilities = videoTrack.getCapabilities() as MediaTrackCapabilities & {
+            torch?: boolean;
+          };
+          if (capabilities && capabilities.torch) {
+            setIsTorchSupported(true);
+          }
+        } catch {
+          setIsTorchSupported(false);
+        }
+      }
+    } catch (err: unknown) {
+      if (!isMounted) return;
+      setIsCameraActive(false);
+
+      const errorObj = err as { name?: string; message?: string } | undefined;
+      const errName = errorObj?.name || '';
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        setIsPermissionDenied(true);
+        setErrorMessage('Permiso de cámara denegado. Permite el acceso para leer etiquetas.');
+      } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+        setIsCameraNotFound(true);
+        setErrorMessage('No se encontró ninguna cámara disponible en el dispositivo.');
+      } else {
+        setErrorMessage('No se pudo iniciar la cámara para leer etiquetas.');
+      }
+    }
+  }, []);
+
+  // --- Mode Switching ---
+  const handleSwitchMode = async (newMode: 'barcode' | 'shelftag') => {
+    if (newMode === scanMode) return;
+
+    await stopAllCameras();
+    setErrorMessage(null);
+    setFeedbackMessage(null);
+    setDetectedTag(null);
+    setEditableName('');
+    setShowManualInput(false);
+
+    setScanMode(newMode);
+  };
+
+  // --- Main Lifecycle Effect ---
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!isOpen) {
+      stopAllCameras();
+      setShowManualInput(false);
+      setErrorMessage(null);
+      setFeedbackMessage(null);
+      setDetectedTag(null);
+      setIsPermissionDenied(false);
+      setIsCameraNotFound(false);
+      setManualCode('');
+      setManualError(null);
+      return;
+    }
+
+    if (scanMode === 'barcode') {
+      startBarcodeScanner(isMounted);
+    } else {
+      startShelfTagCamera(isMounted);
+    }
 
     return () => {
       isMounted = false;
-      stopScanner();
+      stopAllCameras();
     };
-  }, [isOpen, onScan, stopScanner]);
+  }, [isOpen, scanMode, startBarcodeScanner, startShelfTagCamera, stopAllCameras]);
 
+  // --- Torch Toggle ---
   const handleToggleTorch = async () => {
-    if (!scannerRef.current || !isTorchSupported) return;
-    try {
-      const nextTorch = !isTorchOn;
-      await scannerRef.current.applyVideoConstraints({
-        advanced: [{ torch: nextTorch } as unknown as MediaTrackConstraintSet],
-      });
-      setIsTorchOn(nextTorch);
-    } catch (err) {
-      console.warn('Failed to toggle torch:', err);
+    if (!isTorchSupported) return;
+    const nextTorch = !isTorchOn;
+
+    if (scanMode === 'barcode' && barcodeScannerRef.current) {
+      try {
+        await barcodeScannerRef.current.applyVideoConstraints({
+          advanced: [{ torch: nextTorch } as unknown as MediaTrackConstraintSet],
+        });
+        setIsTorchOn(nextTorch);
+      } catch (err) {
+        console.warn('Failed to toggle torch in barcode mode:', err);
+      }
+    } else if (scanMode === 'shelftag' && shelfStreamRef.current) {
+      try {
+        const track = shelfStreamRef.current.getVideoTracks()[0];
+        if (track) {
+          await track.applyConstraints({
+            advanced: [{ torch: nextTorch } as unknown as MediaTrackConstraintSet],
+          });
+          setIsTorchOn(nextTorch);
+        }
+      } catch (err) {
+        console.warn('Failed to toggle torch in shelf tag mode:', err);
+      }
     }
   };
 
+  // --- Manual Barcode Submit ---
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = manualCode.trim();
@@ -219,6 +398,119 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     setManualCode('');
   };
 
+  // --- Capture Shelf Tag OCR ---
+  const handleCaptureShelfTag = async () => {
+    if (isCapturing) return;
+
+    const video = shelfVideoRef.current;
+    const reticle = shelfReticleRef.current;
+
+    if (!video || !reticle || video.videoWidth === 0 || video.videoHeight === 0) {
+      setFeedbackMessage('Esperando a que la cámara enfoque...');
+      return;
+    }
+
+    try {
+      setIsCapturing(true);
+      setFeedbackMessage(null);
+
+      const videoRect = video.getBoundingClientRect();
+      const reticleRect = reticle.getBoundingClientRect();
+
+      // Calculate video crop factoring in object-fit: cover
+      const videoRatio = video.videoWidth / video.videoHeight;
+      const elemRatio = videoRect.width / videoRect.height;
+      let visibleWidth = video.videoWidth;
+      let visibleHeight = video.videoHeight;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      if (videoRatio > elemRatio) {
+        visibleWidth = video.videoHeight * elemRatio;
+        offsetX = (video.videoWidth - visibleWidth) / 2;
+      } else {
+        visibleHeight = video.videoWidth / elemRatio;
+        offsetY = (video.videoHeight - visibleHeight) / 2;
+      }
+
+      const scale = visibleWidth / videoRect.width;
+      const cropX = Math.max(0, offsetX + (reticleRect.left - videoRect.left) * scale);
+      const cropY = Math.max(0, offsetY + (reticleRect.top - videoRect.top) * scale);
+      const cropW = Math.min(video.videoWidth - cropX, reticleRect.width * scale);
+      const cropH = Math.min(video.videoHeight - cropY, reticleRect.height * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(cropW));
+      canvas.height = Math.max(1, Math.round(cropH));
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setFeedbackMessage('No se pudo inicializar el procesador de imagen.');
+        setIsCapturing(false);
+        return;
+      }
+
+      ctx.drawImage(
+        video,
+        cropX,
+        cropY,
+        cropW,
+        cropH,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      const { text, tag } = await OnDeviceOcrService.recognizeShelfTagFromCanvas(canvas);
+
+      if (tag && tag.price && tag.name) {
+        setDetectedTag(tag);
+        setEditableName(tag.name);
+        setFeedbackMessage(null);
+      } else {
+        if (text && text.trim().length > 0) {
+          setFeedbackMessage(
+            'Texto detectado pero incompleto. Acerca la cámara para encuadrar bien el nombre y el precio.'
+          );
+        } else {
+          setFeedbackMessage(
+            'No se detectó texto. Asegúrate de enfocar con buena luz y sin reflejos.'
+          );
+        }
+      }
+    } catch (err) {
+      console.warn('Shelf tag capture error:', err);
+      setFeedbackMessage('Error al leer la etiqueta. Inténtalo de nuevo.');
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  // --- Confirm Add Shelf Tag ---
+  const handleConfirmAddTag = () => {
+    if (!detectedTag) return;
+    const finalName = editableName.trim() || detectedTag.name;
+
+    if (onShelfTagScanned) {
+      onShelfTagScanned({
+        name: finalName,
+        price: detectedTag.price,
+      });
+    }
+
+    // Reset preview so the user can scan the next tag immediately
+    setDetectedTag(null);
+    setEditableName('');
+    setFeedbackMessage(null);
+  };
+
+  const handleRetryTag = () => {
+    setDetectedTag(null);
+    setEditableName('');
+    setFeedbackMessage(null);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -226,12 +518,31 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       className="scanner-fullscreen-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Escáner de códigos de barras"
+      aria-label="Escáner de productos y etiquetas"
     >
-      {/* Top action bar: Torch & Close */}
+      {/* Top action bar: Mode switcher, Torch & Close */}
       <div className="scanner-top-bar">
-        <div className="scanner-top-title">
-          <span>Escanear producto</span>
+        <div className="scanner-mode-switch" role="tablist" aria-label="Modo de escaneo">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scanMode === 'barcode'}
+            className={`scanner-mode-tab ${scanMode === 'barcode' ? 'active' : ''}`}
+            onClick={() => handleSwitchMode('barcode')}
+          >
+            <Barcode size={18} />
+            <span>Código de barras</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scanMode === 'shelftag'}
+            className={`scanner-mode-tab ${scanMode === 'shelftag' ? 'active' : ''}`}
+            onClick={() => handleSwitchMode('shelftag')}
+          >
+            <ScanText size={18} />
+            <span>Etiqueta de estantería</span>
+          </button>
         </div>
 
         <div className="scanner-top-controls">
@@ -260,10 +571,20 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
       {/* Camera Viewport Container */}
       <div className="scanner-viewport-wrapper">
-        <div id="qr-reader" className="scanner-qr-reader" />
+        {scanMode === 'barcode' ? (
+          <div id="qr-reader" className="scanner-qr-reader" />
+        ) : (
+          <video
+            ref={shelfVideoRef}
+            playsInline
+            autoPlay
+            muted
+            className="scanner-video-feed"
+          />
+        )}
 
-        {/* Focus reticle frame overlay when camera is running */}
-        {isCameraActive && (
+        {/* Barcode Focus reticle frame overlay */}
+        {scanMode === 'barcode' && isCameraActive && (
           <div className="scanner-reticle-container" aria-hidden="true">
             <div className="scanner-reticle-box">
               <div className="reticle-corner top-left" />
@@ -273,6 +594,35 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               <div className="reticle-laser" />
             </div>
             <p className="scanner-hint-text">Enfoca a unos 15-20 cm · Evita reflejos de luz</p>
+          </div>
+        )}
+
+        {/* Shelf Tag Focus reticle frame overlay */}
+        {scanMode === 'shelftag' && isCameraActive && (
+          <div className="scanner-reticle-container" aria-hidden="true">
+            <div
+              ref={shelfReticleRef}
+              className="scanner-reticle-box shelf-tag-reticle-box"
+            >
+              <div className="reticle-corner top-left" />
+              <div className="reticle-corner top-right" />
+              <div className="reticle-corner bottom-left" />
+              <div className="reticle-corner bottom-right" />
+              <div className="reticle-laser" />
+            </div>
+            <p className="scanner-hint-text">
+              Encuadra el nombre y el precio de la etiqueta
+            </p>
+          </div>
+        )}
+
+        {/* Capturing loading overlay */}
+        {isCapturing && (
+          <div className="scanner-capturing-overlay">
+            <div className="capturing-spinner-box">
+              <Loader2 size={36} className="animate-spin text-primary" />
+              <p>Leyendo etiqueta...</p>
+            </div>
           </div>
         )}
 
@@ -291,50 +641,124 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         )}
       </div>
 
-      {/* Bottom control panel: Toggle Manual Input */}
+      {/* Bottom control panel */}
       <div className="scanner-bottom-panel">
-        {!showManualInput ? (
-          <button
-            type="button"
-            className="btn-toggle-manual"
-            onClick={() => setShowManualInput(true)}
-            aria-label="Teclear código de barras manualmente"
+        {scanMode === 'barcode' ? (
+          !showManualInput ? (
+            <button
+              type="button"
+              className="btn-toggle-manual"
+              onClick={() => setShowManualInput(true)}
+              aria-label="Teclear código de barras manualmente"
+            >
+              <Keyboard size={20} />
+              <span>Teclear código manualmente</span>
+            </button>
+          ) : (
+            <form className="scanner-manual-form" onSubmit={handleManualSubmit}>
+              <div className="manual-input-row">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoFocus
+                  className={`scanner-manual-input ${manualError ? 'input-error' : ''}`}
+                  placeholder="Ej. 8410123456789"
+                  value={manualCode}
+                  onChange={(e) => {
+                    setManualCode(e.target.value);
+                    if (manualError) setManualError(null);
+                  }}
+                  aria-label="Número de código de barras"
+                />
+                <button type="submit" className="btn-manual-submit">
+                  Añadir
+                </button>
+              </div>
+              {manualError && <span className="scanner-manual-error">{manualError}</span>}
+              {isCameraActive && (
+                <button
+                  type="button"
+                  className="btn-hide-manual"
+                  onClick={() => setShowManualInput(false)}
+                >
+                  Volver a la cámara
+                </button>
+              )}
+            </form>
+          )
+        ) : detectedTag ? (
+          /* Detected Shelf Tag Preview Card */
+          <div
+            className="shelf-tag-preview-card"
+            role="region"
+            aria-label="Etiqueta detectada"
           >
-            <Keyboard size={20} />
-            <span>Teclear código manualmente</span>
-          </button>
-        ) : (
-          <form className="scanner-manual-form" onSubmit={handleManualSubmit}>
-            <div className="manual-input-row">
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoFocus
-                className={`scanner-manual-input ${manualError ? 'input-error' : ''}`}
-                placeholder="Ej. 8410123456789"
-                value={manualCode}
-                onChange={(e) => {
-                  setManualCode(e.target.value);
-                  if (manualError) setManualError(null);
-                }}
-                aria-label="Número de código de barras"
-              />
-              <button type="submit" className="btn-manual-submit">
-                Añadir
-              </button>
+            <div className="preview-card-header">
+              <span className="preview-badge">Etiqueta detectada</span>
+              <span className="preview-price">{detectedTag.price.format()}</span>
             </div>
-            {manualError && <span className="scanner-manual-error">{manualError}</span>}
-            {isCameraActive && (
+            {detectedTag.unitRate && (
+              <span className="preview-unit-rate">{detectedTag.unitRate}</span>
+            )}
+            <div className="preview-input-group">
+              <label htmlFor="detected-name-input" className="preview-label">
+                Producto:
+              </label>
+              <input
+                id="detected-name-input"
+                type="text"
+                className="preview-name-input"
+                value={editableName}
+                onChange={(e) => setEditableName(e.target.value)}
+                placeholder="Nombre del producto"
+              />
+            </div>
+            <div className="preview-actions">
               <button
                 type="button"
-                className="btn-hide-manual"
-                onClick={() => setShowManualInput(false)}
+                className="btn-retry-tag"
+                onClick={handleRetryTag}
               >
-                Volver a la cámara
+                <RotateCcw size={18} />
+                <span>Reintentar</span>
               </button>
+              <button
+                type="button"
+                className="btn-add-tag-to-cart"
+                onClick={handleConfirmAddTag}
+              >
+                <Check size={18} />
+                <span>Añadir a la cesta</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Prominent Shelf Tag Capture Button */
+          <div className="scanner-shelf-bottom">
+            <button
+              type="button"
+              className="btn-scan-shelf-tag"
+              onClick={handleCaptureShelfTag}
+              disabled={isCapturing || !isCameraActive}
+              aria-label="Escanear Etiqueta"
+            >
+              {isCapturing ? (
+                <>
+                  <Loader2 size={24} className="animate-spin" />
+                  <span>Leyendo etiqueta...</span>
+                </>
+              ) : (
+                <>
+                  <ScanText size={24} />
+                  <span>Escanear Etiqueta</span>
+                </>
+              )}
+            </button>
+            {feedbackMessage && (
+              <p className="shelf-feedback-text">{feedbackMessage}</p>
             )}
-          </form>
+          </div>
         )}
       </div>
     </div>

@@ -9,3 +9,4 @@ export * from './services/ScaleBarcodeDetector.js';
 export * from './services/ProductLookupService.js';
 export * from './services/ExportService.js';
 export * from './services/ShelfPriceOcrParser.js';
+export * from './services/ShelfTagOcrParser.js';

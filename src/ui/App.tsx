@@ -260,6 +260,27 @@ export const App: React.FC = () => {
     setPendingLookupResult(null);
   };
 
+  const handleShelfTagScanned = (tag: { name: string; price: Money }) => {
+    if (!session) return;
+
+    const newItem = session.addItem({
+      name: tag.name,
+      unitPrice: tag.price,
+      quantity: 1,
+      isBulk: false,
+    });
+    commitSession(session);
+    Haptics.triggerScanSuccess();
+
+    setUndoState({
+      itemId: newItem.id,
+      previousQuantity: 0,
+      itemName: newItem.name,
+    });
+    setToastMessage(`Añadido: ${newItem.name} (${newItem.unitPrice.format()})`);
+    setIsToastOpen(true);
+  };
+
   const handleCloseScanPriceModal = () => {
     setIsScanPriceModalOpen(false);
     setPendingScanCode(null);
@@ -346,6 +367,7 @@ export const App: React.FC = () => {
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onScan={handleBarcodeScanned}
+        onShelfTagScanned={handleShelfTagScanned}
         isPaused={isScanPriceModalOpen}
       />
 

@@ -94,4 +94,8 @@ export class Money {
   toFormattedString(): string {
     return `${this.toDecimalString()} €`;
   }
+
+  format(): string {
+    return this.toFormattedString();
+  }
 }
