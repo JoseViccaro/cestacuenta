@@ -1415,6 +1415,16 @@ input, select, textarea {
   box-shadow: 0 0 24px rgba(16, 185, 129, 0.8), inset 0 0 16px rgba(16, 185, 129, 0.3);
 }
 
+.scanner-reticle-box.shelf-tag-reticle-box.is-success .reticle-corner {
+  border-color: #10b981;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.9);
+}
+
+.scanner-reticle-box.shelf-tag-reticle-box.is-success .reticle-laser {
+  background: linear-gradient(90deg, transparent, #10b981 25%, #34d399 50%, #10b981 75%, transparent);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 1);
+}
+
 .scanner-floating-chip {
   position: absolute;
   top: 14%;
@@ -1435,6 +1445,17 @@ input, select, textarea {
   z-index: 12;
   animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translate(-50%, -16px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
 }
 
 .scanner-shelf-bottom {

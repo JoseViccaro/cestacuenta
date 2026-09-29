@@ -72,8 +72,29 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [detectedTag, setDetectedTag] = useState<ShelfTagResult | null>(null);
   const [editableName, setEditableName] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
-  const [autoAdd, setAutoAdd] = useState(false);
+  const [autoAdd, setAutoAdd] = useState<boolean>(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const stored = localStorage.getItem('cestacuenta_auto_add_scan');
+        return (stored ?? 'true') === 'true';
+      }
+    } catch {
+      // Ignore storage errors in restricted environments
+    }
+    return true;
+  });
   const [recentAddedToast, setRecentAddedToast] = useState<{ name: string; price: string } | null>(null);
+
+  const handleToggleAutoAdd = (checked: boolean) => {
+    setAutoAdd(checked);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('cestacuenta_auto_add_scan', String(checked));
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  };
 
   const isCapturingRef = useRef(false);
   const scanCooldownUntilRef = useRef<number>(0);
@@ -589,11 +610,12 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       }
 
       if (isRunning) {
-        timerId = setTimeout(runAutoScan, 750);
+        timerId = setTimeout(runAutoScan, 250);
       }
     };
 
-    timerId = setTimeout(runAutoScan, 750);
+    // Immediately trigger initial scan upon camera activation
+    timerId = setTimeout(runAutoScan, 250);
 
     return () => {
       isRunning = false;
@@ -736,7 +758,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           <div className="scanner-reticle-container" aria-hidden="true">
             <div
               ref={shelfReticleRef}
-              className={`scanner-reticle-box shelf-tag-reticle-box ${isSuccessGlow ? 'is-success' : ''} ${isCapturing ? 'is-scanning' : ''}`}
+              className={`scanner-reticle-box shelf-tag-reticle-box ${isSuccessGlow ? 'is-success' : ''} ${(autoAdd && !isPaused && !detectedTag) || isCapturing ? 'is-scanning' : ''}`}
             >
               <div className="reticle-corner top-left" />
               <div className="reticle-corner top-right" />
@@ -900,7 +922,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 <input
                   type="checkbox"
                   checked={autoAdd}
-                  onChange={(e) => setAutoAdd(e.target.checked)}
+                  onChange={(e) => handleToggleAutoAdd(e.target.checked)}
                   className="scanner-autoadd-checkbox"
                 />
                 <span>Auto-añadir al detectar</span>

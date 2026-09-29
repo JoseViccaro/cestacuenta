@@ -270,5 +270,56 @@ describe('OnDeviceOcrService', () => {
         globalThis.document = originalDoc;
       }
     });
+
+    it('clamps large canvas crops (e.g. 1200x800) to max dimension 720px (720x480)', () => {
+      const w = 1200;
+      const h = 800;
+      let outputW = 0;
+      let outputH = 0;
+
+      const mockOutputCtx = {
+        drawImage: () => {},
+        getImageData: () => ({ data: new Uint8ClampedArray(720 * 480 * 4) }),
+        putImageData: () => {},
+      };
+
+      const mockOutputCanvas = {
+        set width(val: number) {
+          outputW = val;
+        },
+        get width() {
+          return outputW;
+        },
+        set height(val: number) {
+          outputH = val;
+        },
+        get height() {
+          return outputH;
+        },
+        getContext: () => mockOutputCtx,
+      };
+
+      const originalDoc = globalThis.document;
+      // @ts-expect-error mocking document for node test
+      globalThis.document = {
+        createElement: (tag: string) => (tag === 'canvas' ? mockOutputCanvas : null),
+      };
+
+      try {
+        const sourceCanvas = {
+          width: w,
+          height: h,
+          getContext: () => mockOutputCtx,
+        } as unknown as HTMLCanvasElement;
+
+        const result = preprocessShelfTagCanvas(sourceCanvas);
+        expect(result).toBe(mockOutputCanvas);
+        expect(outputW).toBe(720);
+        expect(outputH).toBe(480);
+      } finally {
+        globalThis.document = originalDoc;
+      }
+    });
   });
 });
+
