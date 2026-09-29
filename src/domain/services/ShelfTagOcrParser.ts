@@ -37,14 +37,14 @@ export const OLD_PRICE_LINE_REGEX =
  * e.g. "AHORA 1,99 €", "AHORA: 1,99 €", "OFERTA 1,99 €", "PRECIO CLUB 1,99 €", "HOY 1,99 €".
  */
 export const PROMO_PRICE_LINE_REGEX =
-  /^\(?\s*(?:(?:AHORA|OFERTA|PRECIO\s*CLUB|PRECIO\s*ACTUAL|HOY)\s*[:.]?\s*)(?:€\s*)?(\d{1,3}[.,]\d{1,2})\s*(?:€|EUR)?\s*\)?$/i;
+  /^\(?\s*(?:(?:AHORA|OFERTA|PRECIO\s*CLUB|PRECIO\s*ACTUAL|HOY)\s*[:.]?\s*)(?:(?:€|EUR)\s*)?(\d{1,3}[.,]\d{1,2})\s*(?:€|EUR)?\s*\)?$/i;
 
 /**
  * Regex matching standard price lines:
- * e.g. "1,05 €", "1.89 €", "1,75 €", "1,50", "PVP 1,35 €".
+ * e.g. "1,05 €", "1.89 €", "1,75 €", "1,50", "PVP 1,35 €", "€ 29,46", "€29.46", "29,46€", "29.46 EUR".
  */
 export const STANDARD_PRICE_LINE_REGEX =
-  /^\(?\s*(?:(?:P\.?V\.?P\.?|PRECIO)\s*[:.]?\s*)?(?:€\s*)?(\d{1,3}[.,]\d{1,2})\s*(?:€|EUR)?\s*\)?$/i;
+  /^\(?\s*(?:(?:P\.?V\.?P\.?|PRECIO)\s*[:.]?\s*)?(?:(?:€|EUR)\s*)?(\d{1,3}[.,]\d{1,2})\s*(?:€|EUR)?\s*\)?$/i;
 
 /**
  * Regex matching internal reference codes:
@@ -67,16 +67,18 @@ export const DATE_LINE_REGEX =
 
 /**
  * Regex matching store brands, headers, and regulatory boilerplate to strip from product titles.
+ * Includes supermarkets and retail/electronics chains (Prink, MediaMarkt, Fnac, etc.) and service headers (Direpar...).
  */
 export const STORE_NOISE_LINE_REGEX =
-  /^\(?\s*(?:MERCADONA(?:\s*,?\s*S\.?A\.?)?|CONSUM(?:\s*,?\s*S\.?COOP\.?)?|CARREFOUR|DIA|LIDL|ALDI|EROSKI|ALCAMPO|AHORRAMAS|HIPERDINO|BONPREU|CAPRABO|(?:P\.?V\.?P\.?|PRECIO|OFERTA|AHORA|ANTES)\s*(?:IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA)?|IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA|SUGERENCIA\s*DE\s*PRESENTACI[OÓ]N|PRECIO\s*CLUB|OFERTA|PROMOCI[OÓ]N|DESCUENTO|SUPERPRECIO)\s*\)?$/i;
+  /^\(?\s*(?:MERCADONA(?:\s*,?\s*S\.?A\.?)?|CONSUM(?:\s*,?\s*S\.?COOP\.?)?|CARREFOUR|DIA|LIDL|ALDI|EROSKI|ALCAMPO|AHORRAMAS|HIPERDINO|BONPREU|CAPRABO|PRINK(?:\s*STORE)?|MEDIAMARKT|MEDIA\s*MARKT|FNAC|WORTEN|EL\s*CORTE\s*INGL[EÉ]S|HIPERCOR|LEROY\s*MERLIN|BAUHAUS|BRICOMART|OBRAMAT|DECATHLON|IKEA|GAME|PC\s*COMPONENTES|DIREPAR[A-Z\s.]*|DRIPAR[A-Z\s.]*|DREPAR[A-Z\s.]*|REPARACI[OÓ]N[\s.]*|REPAR[A-Z\s.]*|SERVICIO\s*T[EÉ]CNICO[\s.]*|(?:P\.?V\.?P\.?|PRECIO|OFERTA|AHORA|ANTES)\s*(?:IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA)?|IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA|SUGERENCIA\s*DE\s*PRESENTACI[OÓ]N|PRECIO\s*CLUB|OFERTA|PROMOCI[OÓ]N|DESCUENTO|SUPERPRECIO)\s*\)?$/i;
 
 /**
- * Regex matching measurement weights/volumes (e.g. "208 g", "260 g", "1,2 kg", "1L").
+ * Regex matching measurement weights/volumes and retail/electronics capacities/ratings:
+ * e.g. "208 g", "260 g", "1,2 kg", "1L", "128 GB", "2 TB", "500 MB", "65 W", "12 V", "10000 MAH", "PACK 4".
  * These should NOT be mistaken for prices when isolated on a line.
  */
 export const WEIGHT_VOLUME_REGEX =
-  /^\(?\s*\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|mg|kg|kilos?|l|lt|litros?|ml|cl|dl|%|pz|piezas?)\s*\)?$/i;
+  /^\(?\s*(?:PACK\s*\d+|\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|mg|kg|kilos?|l|lt|litros?|ml|cl|dl|%|pz|piezas?|gb|tb|mb|kb|w|v|mah|ah|pack|uds?|unidades?))\s*\)?$/i;
 
 /**
  * Extracts unit rate text if present in the given OCR text.
@@ -188,20 +190,26 @@ export function extractPrice(text: string): Money | null {
   // Mask unit rates (e.g. "( 1,05 € / l )", "1 kg = 3,78 €", "8,95 €/L")
   cleaned = cleaned.replace(new RegExp(UNIT_RATE_REGEX.source, 'gi'), ' ');
 
+  // Mask USB specifications (e.g. "USB 3.0", "USB 2.0", "USB 3.2")
+  cleaned = cleaned.replace(/\bUSB\s*\d+(?:\.\d+)?\b/gi, ' ');
+
+  // Mask pack indicators with quantities (e.g. "PACK 4", "PACK 2")
+  cleaned = cleaned.replace(/\bPACK\s*\d+\b/gi, ' ');
+
+  // Mask standalone weights, capacities, voltages, power so numbers aren't parsed as prices
+  cleaned = cleaned.replace(
+    /(?<![€/\w])\b\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|mg|kg|kilos?|l|lt|litros?|ml|cl|dl|%|pz|piezas?|gb|tb|mb|kb|w|v|mah|ah|pack|uds?|unidades?)\b(?!\s*[/€])/gi,
+    ' '
+  );
+
   // Mask barcodes and internal codes
   cleaned = cleaned.replace(/(?<!\d)\d{5,14}(?!\d)/g, ' ');
 
   // Mask standalone dates
   cleaned = cleaned.replace(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g, ' ');
 
-  // Mask standalone weights/volumes so decimal weights aren't parsed as prices
-  cleaned = cleaned.replace(
-    /(?<![€/\w])\b\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|mg|kg|kilos?|l|lt|litros?|ml|cl|dl|%|pz|piezas?)\b(?!\s*[/€])/gi,
-    ' '
-  );
-
-  // Look for remaining price candidates: e.g. "1,50 €" or "1,50"
-  const candidateRegex = /(?:(€|EUR)\s*)?(\d{1,3}[.,]\d{2})(?:\s*(€|EUR))?/gi;
+  // Look for remaining price candidates: e.g. "1,50 €", "€ 29,46", "29.46 EUR", "1,50"
+  const candidateRegex = /(?:(€|EUR)\s*)?(\d{1,3}[.,]\d{1,2})(?:\s*(€|EUR))?/gi;
   let candidateMatch: RegExpExecArray | null;
   let bestCandidate: Money | null = null;
   let bestHasCurrency = false;
@@ -301,9 +309,9 @@ export function extractName(text: string): string | null {
     // Clean inline noise from the line: remove standalone codes, dates, euro symbols with prices
     let cleanedLine = line;
 
-    // Remove inline boilerplate phrases
+    // Remove inline boilerplate phrases and store noise
     cleanedLine = cleanedLine.replace(
-      /\b(?:PRECIO\s*CLUB|IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA|SUGERENCIA\s*DE\s*PRESENTACI[OÓ]N)\b/gi,
+      /\b(?:PRECIO\s*CLUB|IVA\s*INCLUIDO|CON\s*IVA|SIN\s*IVA|SUGERENCIA\s*DE\s*PRESENTACI[OÓ]N|PRINK|MEDIAMARKT|MEDIA\s*MARKT|FNAC|WORTEN|DIREPAR\w*|DRIPAR\w*|DREPAR\w*|REPAR\w*)\b[\s.]*/gi,
       ''
     );
 
@@ -328,8 +336,11 @@ export function extractName(text: string): string | null {
       ''
     );
 
-    // Remove standalone 5-8 digit internal codes
-    cleanedLine = cleanedLine.replace(/(?<!\d)\d{5,8}(?!\d)/g, '');
+    // Remove standalone 5-8 digit internal codes (preserving capacities and ratings like 10000 MAH)
+    cleanedLine = cleanedLine.replace(
+      /(?<!\d)\d{5,8}(?!\d)(?!\s*(?:g|gr|gramos|mg|kg|kilos?|l|lt|litros?|ml|cl|dl|%|pz|piezas?|gb|tb|mb|kb|w|v|mah|ah|pack|uds?|unidades?))/gi,
+      ''
+    );
 
     // Remove excess punctuation and spaces
     cleanedLine = cleanedLine.replace(/[=~_]+/g, ' ').replace(/\s{2,}/g, ' ').trim();

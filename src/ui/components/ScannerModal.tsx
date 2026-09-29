@@ -68,11 +68,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
   // Shelf tag OCR state
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isSuccessGlow, setIsSuccessGlow] = useState(false);
   const [detectedTag, setDetectedTag] = useState<ShelfTagResult | null>(null);
   const [editableName, setEditableName] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [autoAdd, setAutoAdd] = useState(false);
   const [recentAddedToast, setRecentAddedToast] = useState<{ name: string; price: string } | null>(null);
+
+  const isCapturingRef = useRef(false);
+  const scanCooldownUntilRef = useRef<number>(0);
+  const detectedTagRef = useRef<ShelfTagResult | null>(null);
+  detectedTagRef.current = detectedTag;
 
   // --- Stop Functions ---
   const stopBarcodeScanner = useCallback(async () => {
@@ -330,6 +336,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     setDetectedTag(null);
     setEditableName('');
     setShowManualInput(false);
+    setIsSuccessGlow(false);
+    scanCooldownUntilRef.current = 0;
 
     setScanMode(newMode);
   };
@@ -345,6 +353,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       setFeedbackMessage(null);
       setDetectedTag(null);
       setRecentAddedToast(null);
+      setIsSuccessGlow(false);
+      scanCooldownUntilRef.current = 0;
       setIsPermissionDenied(false);
       setIsCameraNotFound(false);
       setManualCode('');
@@ -408,112 +418,188 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   };
 
   // --- Capture Shelf Tag OCR ---
-  const handleCaptureShelfTag = async () => {
-    if (isCapturing) return;
+  const executeShelfTagCapture = useCallback(
+    async (isAutoScan: boolean = false) => {
+      if (isCapturingRef.current) return;
 
-    const video = shelfVideoRef.current;
-    const reticle = shelfReticleRef.current;
+      const video = shelfVideoRef.current;
+      const reticle = shelfReticleRef.current;
 
-    if (!video || !reticle || video.videoWidth === 0 || video.videoHeight === 0) {
-      setFeedbackMessage('Esperando a que la cámara enfoque...');
-      return;
-    }
-
-    try {
-      setIsCapturing(true);
-      setFeedbackMessage(null);
-
-      const videoRect = video.getBoundingClientRect();
-      const reticleRect = reticle.getBoundingClientRect();
-
-      // Calculate video crop factoring in object-fit: cover
-      const videoRatio = video.videoWidth / video.videoHeight;
-      const elemRatio = videoRect.width / videoRect.height;
-      let visibleWidth = video.videoWidth;
-      let visibleHeight = video.videoHeight;
-      let offsetX = 0;
-      let offsetY = 0;
-
-      if (videoRatio > elemRatio) {
-        visibleWidth = video.videoHeight * elemRatio;
-        offsetX = (video.videoWidth - visibleWidth) / 2;
-      } else {
-        visibleHeight = video.videoWidth / elemRatio;
-        offsetY = (video.videoHeight - visibleHeight) / 2;
-      }
-
-      const scale = visibleWidth / videoRect.width;
-      const cropX = Math.max(0, offsetX + (reticleRect.left - videoRect.left) * scale);
-      const cropY = Math.max(0, offsetY + (reticleRect.top - videoRect.top) * scale);
-      const cropW = Math.min(video.videoWidth - cropX, reticleRect.width * scale);
-      const cropH = Math.min(video.videoHeight - cropY, reticleRect.height * scale);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(cropW));
-      canvas.height = Math.max(1, Math.round(cropH));
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        setFeedbackMessage('No se pudo inicializar el procesador de imagen.');
-        setIsCapturing(false);
+      if (!video || !reticle || video.videoWidth === 0 || video.videoHeight === 0) {
+        if (!isAutoScan) {
+          setFeedbackMessage('Esperando a que la cámara enfoque...');
+        }
         return;
       }
 
-      ctx.drawImage(
-        video,
-        cropX,
-        cropY,
-        cropW,
-        cropH,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
+      try {
+        isCapturingRef.current = true;
+        setIsCapturing(true);
+        if (!isAutoScan) {
+          setFeedbackMessage(null);
+        }
 
-      const { text, tag } = await OnDeviceOcrService.recognizeShelfTagFromCanvas(canvas);
+        const videoRect = video.getBoundingClientRect();
+        const reticleRect = reticle.getBoundingClientRect();
 
-      if (tag && tag.price && tag.name) {
-        Haptics.triggerScanSuccess();
+        // Calculate video crop factoring in object-fit: cover
+        const videoRatio = video.videoWidth / video.videoHeight;
+        const elemRatio = videoRect.width / videoRect.height;
+        let visibleWidth = video.videoWidth;
+        let visibleHeight = video.videoHeight;
+        let offsetX = 0;
+        let offsetY = 0;
 
-        if (autoAdd) {
-          if (onShelfTagScanned) {
-            onShelfTagScanned({
-              name: tag.name,
-              price: tag.price,
-            });
+        if (videoRatio > elemRatio) {
+          visibleWidth = video.videoHeight * elemRatio;
+          offsetX = (video.videoWidth - visibleWidth) / 2;
+        } else {
+          visibleHeight = video.videoWidth / elemRatio;
+          offsetY = (video.videoHeight - visibleHeight) / 2;
+        }
+
+        const scale = visibleWidth / videoRect.width;
+        const rawCropX = offsetX + (reticleRect.left - videoRect.left) * scale;
+        const rawCropY = offsetY + (reticleRect.top - videoRect.top) * scale;
+        const rawCropW = reticleRect.width * scale;
+        const rawCropH = reticleRect.height * scale;
+
+        // Generous 25% safety margin around reticle coordinates clamped to video bounds
+        const padX = rawCropW * 0.25;
+        const padY = rawCropH * 0.25;
+
+        const minX = Math.max(0, rawCropX - padX);
+        const minY = Math.max(0, rawCropY - padY);
+        const maxX = Math.min(video.videoWidth, rawCropX + rawCropW + padX);
+        const maxY = Math.min(video.videoHeight, rawCropY + rawCropH + padY);
+
+        const cropX = minX;
+        const cropY = minY;
+        const cropW = Math.max(1, maxX - minX);
+        const cropH = Math.max(1, maxY - minY);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(cropW));
+        canvas.height = Math.max(1, Math.round(cropH));
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          if (!isAutoScan) {
+            setFeedbackMessage('No se pudo inicializar el procesador de imagen.');
           }
-          setRecentAddedToast({
-            name: tag.name,
-            price: tag.price.format(),
-          });
-          setTimeout(() => setRecentAddedToast(null), 2500);
-          setDetectedTag(null);
-          setEditableName('');
-          setFeedbackMessage(null);
-        } else {
-          setDetectedTag(tag);
-          setEditableName(tag.name);
-          setFeedbackMessage(null);
+          return;
         }
-      } else {
-        if (text && text.trim().length > 0) {
-          setFeedbackMessage(
-            'Texto detectado pero incompleto. Acerca la cámara para encuadrar bien el nombre y el precio.'
-          );
+
+        ctx.drawImage(
+          video,
+          cropX,
+          cropY,
+          cropW,
+          cropH,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        const { text, tag } = await OnDeviceOcrService.recognizeShelfTagFromCanvas(canvas);
+
+        if (tag && tag.price && tag.name) {
+          Haptics.triggerScanSuccess();
+
+          if (autoAdd) {
+            // Trigger visual success glow on reticle
+            setIsSuccessGlow(true);
+            setTimeout(() => setIsSuccessGlow(false), 1200);
+
+            // Debounce 1.5s to prevent duplicate scans of the same tag
+            scanCooldownUntilRef.current = Date.now() + 1500;
+
+            if (onShelfTagScanned) {
+              onShelfTagScanned({
+                name: tag.name,
+                price: tag.price,
+              });
+            }
+
+            setRecentAddedToast({
+              name: tag.name,
+              price: tag.price.format(),
+            });
+            setTimeout(() => setRecentAddedToast(null), 2500);
+
+            setDetectedTag(null);
+            setEditableName('');
+            setFeedbackMessage(null);
+          } else {
+            setDetectedTag(tag);
+            setEditableName(tag.name);
+            setFeedbackMessage(null);
+          }
         } else {
-          setFeedbackMessage(
-            'No se detectó texto. Asegúrate de enfocar con buena luz y sin reflejos.'
-          );
+          if (!isAutoScan) {
+            if (text && text.trim().length > 0) {
+              setFeedbackMessage(
+                'Texto detectado pero incompleto. Acerca la cámara para encuadrar bien el nombre y el precio.'
+              );
+            } else {
+              setFeedbackMessage(
+                'No se detectó texto. Asegúrate de enfocar con buena luz y sin reflejos.'
+              );
+            }
+          }
         }
+      } catch (err) {
+        if (!isAutoScan) {
+          console.warn('Shelf tag capture error:', err);
+          setFeedbackMessage('Error al leer la etiqueta. Inténtalo de nuevo.');
+        }
+      } finally {
+        isCapturingRef.current = false;
+        setIsCapturing(false);
       }
-    } catch (err) {
-      console.warn('Shelf tag capture error:', err);
-      setFeedbackMessage('Error al leer la etiqueta. Inténtalo de nuevo.');
-    } finally {
-      setIsCapturing(false);
-    }
+    },
+    [autoAdd, onShelfTagScanned]
+  );
+
+  const handleCaptureShelfTag = () => {
+    executeShelfTagCapture(false);
   };
+
+  // --- Automated Scanning Loop for Shelf Tag Mode ---
+  useEffect(() => {
+    if (scanMode !== 'shelftag' || !isCameraActive || !autoAdd || isPaused) {
+      return;
+    }
+
+    let isRunning = true;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    const runAutoScan = async () => {
+      if (!isRunning) return;
+
+      const now = Date.now();
+      if (now < scanCooldownUntilRef.current) {
+        timerId = setTimeout(runAutoScan, 200);
+        return;
+      }
+
+      if (!isCapturingRef.current && !detectedTagRef.current) {
+        await executeShelfTagCapture(true);
+      }
+
+      if (isRunning) {
+        timerId = setTimeout(runAutoScan, 750);
+      }
+    };
+
+    timerId = setTimeout(runAutoScan, 750);
+
+    return () => {
+      isRunning = false;
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [scanMode, isCameraActive, autoAdd, isPaused, executeShelfTagCapture]);
 
   // --- Confirm Add Shelf Tag ---
   const handleConfirmAddTag = () => {
@@ -650,7 +736,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           <div className="scanner-reticle-container" aria-hidden="true">
             <div
               ref={shelfReticleRef}
-              className="scanner-reticle-box shelf-tag-reticle-box"
+              className={`scanner-reticle-box shelf-tag-reticle-box ${isSuccessGlow ? 'is-success' : ''} ${isCapturing ? 'is-scanning' : ''}`}
             >
               <div className="reticle-corner top-left" />
               <div className="reticle-corner top-right" />
@@ -659,18 +745,18 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               <div className="reticle-laser" />
             </div>
             <p className="scanner-hint-text">
-              Encuadra el nombre y el precio de la etiqueta
+              {autoAdd ? 'Escaneando automáticamente...' : 'Encuadra el nombre y el precio de la etiqueta'}
             </p>
           </div>
         )}
 
-        {/* Capturing loading overlay */}
-        {isCapturing && (
-          <div className="scanner-capturing-overlay">
-            <div className="capturing-spinner-box">
-              <Loader2 size={36} className="animate-spin text-primary" />
-              <p>Leyendo etiqueta...</p>
-            </div>
+        {/* Floating Success Chip */}
+        {recentAddedToast && (
+          <div className="scanner-floating-chip" role="status">
+            <Check size={20} />
+            <span>
+              Añadido: <strong>{recentAddedToast.name}</strong> ({recentAddedToast.price})
+            </span>
           </div>
         )}
 
@@ -789,12 +875,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               className="btn-scan-shelf-tag"
               onClick={handleCaptureShelfTag}
               disabled={isCapturing || !isCameraActive}
-              aria-label="Escanear Etiqueta"
+              aria-label={autoAdd ? 'Escaneando automáticamente...' : 'Escanear Etiqueta'}
             >
               {isCapturing ? (
                 <>
                   <Loader2 size={24} className="animate-spin" />
                   <span>Leyendo etiqueta...</span>
+                </>
+              ) : autoAdd ? (
+                <>
+                  <ScanText size={24} />
+                  <span>Escaneando automáticamente...</span>
                 </>
               ) : (
                 <>

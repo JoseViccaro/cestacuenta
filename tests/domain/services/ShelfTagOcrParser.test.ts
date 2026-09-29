@@ -258,4 +258,84 @@ describe('ShelfTagOcrParser', () => {
       expect(ShelfTagOcrParser.extractInternalCode(text)).toBe('238120');
     });
   });
+
+  describe('Retail & Electronics shelf tags (Pendrives, Hardware, Tech)', () => {
+    it('correctly parses real-world Kingston pendrive tag with store logo and service header', () => {
+      const text = 'prink\nDirepar...\nPENDRIVE\n128 GB\n€ 29,46';
+      const result = parseShelfTag(text);
+
+      expect(result).not.toBeNull();
+      expect(result?.name).toBe('PENDRIVE 128 GB');
+      expect(result?.price.cents).toBe(2946);
+      expect(result?.price.format()).toBe('29,46 €');
+      expect(result?.price.equals(Money.fromCents(2946))).toBe(true);
+    });
+
+    it('correctly extracts various European currency format positions (€ 29,46, €29.46, 29,46€, 29.46 EUR)', () => {
+      const variants = [
+        'PENDRIVE 128 GB\n€ 29,46',
+        'PENDRIVE 128 GB\n€29.46',
+        'PENDRIVE 128 GB\n29,46€',
+        'PENDRIVE 128 GB\n29.46 EUR',
+      ];
+
+      for (const raw of variants) {
+        const result = parseShelfTag(raw);
+        expect(result).not.toBeNull();
+        expect(result?.name).toBe('PENDRIVE 128 GB');
+        expect(result?.price.cents).toBe(2946);
+      }
+    });
+
+    it('supports tech capacities and ratings: GB, TB, MB, USB, W, V, MAH, PACK', () => {
+      const techTags = [
+        {
+          text: 'MEDIAMARKT\nDISCO SSD EXTERNO 2 TB\n89,90 €',
+          expectedName: 'DISCO SSD EXTERNO 2 TB',
+          expectedCents: 8990,
+        },
+        {
+          text: 'TARJETA MICRO SD 512 MB\n9,95 €',
+          expectedName: 'TARJETA MICRO SD 512 MB',
+          expectedCents: 995,
+        },
+        {
+          text: 'CARGADOR RAPIDO USB-C 65 W\n€ 19,99',
+          expectedName: 'CARGADOR RAPIDO USB-C 65 W',
+          expectedCents: 1999,
+        },
+        {
+          text: 'TRANSFORMADOR CORRIENTE 12 V\n14,50 €',
+          expectedName: 'TRANSFORMADOR CORRIENTE 12 V',
+          expectedCents: 1450,
+        },
+        {
+          text: 'POWERBANK BATERIA 10000 MAH\n€ 22,95',
+          expectedName: 'POWERBANK BATERIA 10000 MAH',
+          expectedCents: 2295,
+        },
+        {
+          text: 'MEMORIAS USB 3.0 PACK 3\n15,00 €',
+          expectedName: 'MEMORIAS USB 3.0 PACK 3',
+          expectedCents: 1500,
+        },
+      ];
+
+      for (const item of techTags) {
+        const result = parseShelfTag(item.text);
+        expect(result).not.toBeNull();
+        expect(result?.name).toBe(item.expectedName);
+        expect(result?.price.cents).toBe(item.expectedCents);
+      }
+    });
+
+    it('filters Dripar... and store logo noise from title', () => {
+      const text = 'prink\nDripar...\nPENDRIVE 64 GB USB 3.2\n€ 16,95';
+      const result = parseShelfTag(text);
+
+      expect(result).not.toBeNull();
+      expect(result?.name).toBe('PENDRIVE 64 GB USB 3.2');
+      expect(result?.price.cents).toBe(1695);
+    });
+  });
 });

@@ -152,5 +152,123 @@ describe('OnDeviceOcrService', () => {
       const result = preprocessShelfTagCanvas(mockCanvas);
       expect(result).toBe(mockCanvas);
     });
+
+    it('does not invert image when borders are dark (anti-theft casing) but label is white paper', () => {
+      const w = 600;
+      const h = 600;
+      const numPixels = w * h;
+      const mockData = new Uint8ClampedArray(numPixels * 4);
+
+      // Borders (first/last 30 rows/cols) are dark casing (r=30, g=30, b=30)
+      // Interior (>60% of pixels) is white label paper (r=240, g=240, b=240)
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x) * 4;
+          const isBorder = x < 30 || x >= w - 30 || y < 30 || y >= h - 30;
+          const val = isBorder ? 30 : 240;
+          mockData[idx] = val;
+          mockData[idx + 1] = val;
+          mockData[idx + 2] = val;
+          mockData[idx + 3] = 255;
+        }
+      }
+
+      let putDataResult: Uint8ClampedArray | null = null;
+      const mockOutputCtx = {
+        drawImage: () => {},
+        getImageData: () => ({ data: mockData }),
+        putImageData: (imgData: { data: Uint8ClampedArray }) => {
+          putDataResult = imgData.data;
+        },
+      };
+
+      const mockOutputCanvas = {
+        width: w,
+        height: h,
+        getContext: () => mockOutputCtx,
+      };
+
+      const originalDoc = globalThis.document;
+      // @ts-expect-error mocking document for node test
+      globalThis.document = {
+        createElement: (tag: string) => (tag === 'canvas' ? mockOutputCanvas : null),
+      };
+
+      try {
+        const sourceCanvas = {
+          width: w,
+          height: h,
+          getContext: () => mockOutputCtx,
+        } as unknown as HTMLCanvasElement;
+
+        const result = preprocessShelfTagCanvas(sourceCanvas);
+        expect(result).toBe(mockOutputCanvas);
+        expect(putDataResult).not.toBeNull();
+
+        // Center pixel should remain bright (>200), NOT inverted into black (<50)!
+        const centerIdx = (300 * w + 300) * 4;
+        expect(putDataResult![centerIdx]).toBeGreaterThan(200);
+      } finally {
+        globalThis.document = originalDoc;
+      }
+    });
+
+    it('inverts image when label background is genuinely dark (light text on dark tag)', () => {
+      const w = 600;
+      const h = 600;
+      const numPixels = w * h;
+      const mockData = new Uint8ClampedArray(numPixels * 4);
+
+      // Background (80% of pixels) is dark tag (r=25, g=25, b=25)
+      // Text (20% of pixels) is white (r=240, g=240, b=240)
+      for (let i = 0; i < numPixels; i++) {
+        const idx = i * 4;
+        const isText = i % 5 === 0;
+        const val = isText ? 240 : 25;
+        mockData[idx] = val;
+        mockData[idx + 1] = val;
+        mockData[idx + 2] = val;
+        mockData[idx + 3] = 255;
+      }
+
+      let putDataResult: Uint8ClampedArray | null = null;
+      const mockOutputCtx = {
+        drawImage: () => {},
+        getImageData: () => ({ data: mockData }),
+        putImageData: (imgData: { data: Uint8ClampedArray }) => {
+          putDataResult = imgData.data;
+        },
+      };
+
+      const mockOutputCanvas = {
+        width: w,
+        height: h,
+        getContext: () => mockOutputCtx,
+      };
+
+      const originalDoc = globalThis.document;
+      // @ts-expect-error mocking document for node test
+      globalThis.document = {
+        createElement: (tag: string) => (tag === 'canvas' ? mockOutputCanvas : null),
+      };
+
+      try {
+        const sourceCanvas = {
+          width: w,
+          height: h,
+          getContext: () => mockOutputCtx,
+        } as unknown as HTMLCanvasElement;
+
+        const result = preprocessShelfTagCanvas(sourceCanvas);
+        expect(result).toBe(mockOutputCanvas);
+        expect(putDataResult).not.toBeNull();
+
+        // Background pixels (started at 25) should now be inverted into bright (>180)
+        const bgIdx = 1 * 4;
+        expect(putDataResult![bgIdx]).toBeGreaterThan(180);
+      } finally {
+        globalThis.document = originalDoc;
+      }
+    });
   });
 });

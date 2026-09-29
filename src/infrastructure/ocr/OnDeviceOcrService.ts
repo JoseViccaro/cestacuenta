@@ -129,112 +129,85 @@ export function preprocessShelfTagCanvas(sourceCanvas: HTMLCanvasElement): HTMLC
     const len = data.length;
     const numPixels = targetW * targetH;
 
-    // 2. Perceptual luminance calculation (Rec. 601) and border background sampling
+    // 2. Perceptual luminance calculation (Rec. 601) and histogram computation
     const grays = new Uint8Array(numPixels);
     const hist = new Uint32Array(256);
-    let borderLumSum = 0;
-    let borderCount = 0;
 
-    for (let y = 0; y < targetH; y++) {
-      for (let x = 0; x < targetW; x++) {
-        const pixelIdx = y * targetW + x;
-        const i = pixelIdx * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const l = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-        grays[pixelIdx] = l;
-        hist[l]++;
+    for (let i = 0, j = 0; i < len; i += 4, j++) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const l = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      grays[j] = l;
+      hist[l]++;
+    }
 
-        // Sample border pixels (first and last 3 rows/cols) to measure background luminance
-        if (x < 3 || x >= targetW - 3 || y < 3 || y >= targetH - 3) {
-          borderLumSum += l;
-          borderCount++;
-        }
+    // Determine polarity using the histogram median and dominant peak.
+    // In product labels/shelf tags, the label paper background occupies >60% of pixels.
+    // If the label is housed in an anti-theft plastic casing or framed by shelf shadows,
+    // the borders are dark even though the label itself is white paper.
+    // Measuring the median and dominant mode of the entire region reflects the true label background.
+    let cumulative = 0;
+    let medianLum = 128;
+    for (let i = 0; i < 256; i++) {
+      cumulative += hist[i];
+      if (cumulative >= numPixels * 0.5) {
+        medianLum = i;
+        break;
       }
     }
 
-    const borderAvgLum = borderCount > 0 ? borderLumSum / borderCount : 128;
+    // Find dominant histogram peak using a smoothed 5-bucket window
+    let maxPeakWeight = 0;
+    let dominantPeakLum = medianLum;
+    for (let i = 2; i < 254; i++) {
+      const windowSum = hist[i - 2] + hist[i - 1] + hist[i] + hist[i + 1] + hist[i + 2];
+      if (windowSum > maxPeakWeight) {
+        maxPeakWeight = windowSum;
+        dominantPeakLum = i;
+      }
+    }
+
+    // If the dominant background / median is light (> 110), keep dark-on-light!
+    // Only invert if the true background of the label is genuinely dark (< 110).
+    const isDarkBackground = medianLum < 110 && dominantPeakLum < 110;
 
     // 3. Dynamic contrast stretching (2nd to 98th percentile)
-    let cumulative = 0;
+    let pCumulative = 0;
     let p2 = 0;
     let p98 = 255;
     const p2Target = numPixels * 0.02;
     const p98Target = numPixels * 0.98;
 
     for (let i = 0; i < 256; i++) {
-      cumulative += hist[i];
-      if (cumulative >= p2Target && p2 === 0) {
+      pCumulative += hist[i];
+      if (pCumulative >= p2Target && p2 === 0) {
         p2 = i;
       }
-      if (cumulative >= p98Target) {
+      if (pCumulative >= p98Target) {
         p98 = i;
         break;
       }
     }
 
     const pRange = p98 - p2;
-    const stretchedGrays = new Uint8Array(numPixels);
-    const stretchedHist = new Uint32Array(256);
 
-    if (pRange > 20) {
-      for (let i = 0; i < numPixels; i++) {
-        const orig = grays[i];
-        const stretched = Math.min(255, Math.max(0, Math.round(((orig - p2) / pRange) * 255)));
-        stretchedGrays[i] = stretched;
-        stretchedHist[stretched]++;
-      }
-    } else {
-      stretchedGrays.set(grays);
-      stretchedHist.set(hist);
-    }
-
-    // 4. Adaptive Otsu thresholding for optimal foreground / background separation
-    let totalSum = 0;
-    for (let i = 0; i < 256; i++) {
-      totalSum += i * stretchedHist[i];
-    }
-
-    let wB = 0;
-    let sumB = 0;
-    let maxVariance = 0;
-    let threshold = 128;
-
-    for (let t = 0; t < 256; t++) {
-      wB += stretchedHist[t];
-      if (wB === 0) continue;
-      const wF = numPixels - wB;
-      if (wF === 0) break;
-
-      sumB += t * stretchedHist[t];
-      const mB = sumB / wB;
-      const mF = (totalSum - sumB) / wF;
-      const variance = wB * wF * (mB - mF) * (mB - mF);
-
-      if (variance > maxVariance) {
-        maxVariance = variance;
-        threshold = t;
-      }
-    }
-
-    // 5. Polarity detection: Check if background is dark (light text on dark background)
-    // If border average luminance is dark (< 115), invert binarization so Tesseract gets black text on white
-    const isDarkBackground = borderAvgLum < 115;
-
+    // 4. Smooth grayscale contrast enhancement (preserves text glyphs and prevents
+    // aggressive thresholding artifacts under plastic reflections, glare, and shadows)
     for (let i = 0, j = 0; i < len; i += 4, j++) {
-      const g = stretchedGrays[j];
-      let val: number;
+      const orig = grays[j];
+      let stretched = pRange > 20
+        ? Math.min(255, Math.max(0, Math.round(((orig - p2) / pRange) * 255)))
+        : orig;
+
+      // Invert only if the background was genuinely dark, so Tesseract gets dark text on light background
       if (isDarkBackground) {
-        // Bright text on dark background: text (>= threshold) -> 0 (black), background -> 255 (white)
-        val = g >= threshold ? 0 : 255;
-      } else {
-        // Dark text on light background: text (< threshold) -> 0 (black), background -> 255 (white)
-        val = g < threshold ? 0 : 255;
+        stretched = 255 - stretched;
       }
-      data[i] = val;
-      data[i + 1] = val;
-      data[i + 2] = val;
+
+      data[i] = stretched;
+      data[i + 1] = stretched;
+      data[i + 2] = stretched;
       data[i + 3] = 255;
     }
 
