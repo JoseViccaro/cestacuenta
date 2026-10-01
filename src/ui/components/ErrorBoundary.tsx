@@ -34,8 +34,8 @@ export class ErrorBoundary extends Component<Props, State> {
             alignItems: 'center',
             justifyContent: 'center',
             padding: '24px',
-            backgroundColor: '#0f172a',
-            color: '#f8fafc',
+            backgroundColor: 'var(--bg-app)',
+            color: 'var(--text-main)',
             textAlign: 'center',
             fontFamily: 'system-ui, -apple-system, sans-serif',
           }}
@@ -45,13 +45,13 @@ export class ErrorBoundary extends Component<Props, State> {
               width: '64px',
               height: '64px',
               borderRadius: '50%',
-              backgroundColor: '#ef444420',
-              border: '1px solid #ef4444',
+              backgroundColor: 'var(--danger-surface)',
+              border: '1px solid var(--danger-border)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: '16px',
-              color: '#ef4444',
+              color: 'var(--danger)',
               fontSize: '28px',
             }}
           >
@@ -60,7 +60,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px' }}>
             Ocurrió un error inesperado
           </h2>
-          <p style={{ color: '#94a3b8', fontSize: '0.9rem', maxWidth: '360px', marginBottom: '20px' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '360px', marginBottom: '20px' }}>
             {this.state.error?.message || 'Hubo un fallo al renderizar la aplicación.'}
           </p>
           <button
@@ -69,8 +69,8 @@ export class ErrorBoundary extends Component<Props, State> {
             style={{
               padding: '10px 20px',
               borderRadius: '8px',
-              backgroundColor: '#10b981',
-              color: '#ffffff',
+              backgroundColor: 'var(--primary)',
+              color: 'var(--primary-text)',
               border: 'none',
               fontWeight: 600,
               fontSize: '0.95rem',

@@ -7,9 +7,12 @@ import {
   BarcodeScannerHandler,
   ProductLookupService,
   ProductLookupResult,
+  ShoppingList,
+  ShoppingListMatcherService,
 } from '../domain/index.js';
 import { LocalStorageShoppingSessionRepository } from '../infrastructure/persistence/web/LocalStorageShoppingSessionRepository.js';
 import { LocalStorageProductCatalogRepository } from '../infrastructure/persistence/web/LocalStorageProductCatalogRepository.js';
+import { LocalStorageShoppingListRepository } from '../infrastructure/persistence/web/LocalStorageShoppingListRepository.js';
 import { OpenFoodFactsClient } from '../infrastructure/external/OpenFoodFactsClient.js';
 import { Haptics } from '../infrastructure/device/Haptics.js';
 import { Header } from './components/Header.js';
@@ -22,6 +25,8 @@ import { ScannerModal } from './components/ScannerModal.js';
 import { ScanPricePromptModal } from './components/ScanPricePromptModal.js';
 import { ToastUndo } from './components/ToastUndo.js';
 import { HistoryModal } from './components/HistoryModal.js';
+import { ShoppingListBanner } from './components/ShoppingListBanner.js';
+import { ShoppingListModal } from './components/ShoppingListModal.js';
 
 const DEFAULT_STORE_NAME = 'Mi Supermercado';
 
@@ -34,6 +39,7 @@ interface UndoState {
 export const App: React.FC = () => {
   const repository = useMemo(() => new LocalStorageShoppingSessionRepository(), []);
   const catalogRepository = useMemo(() => new LocalStorageProductCatalogRepository(), []);
+  const listRepository = useMemo(() => new LocalStorageShoppingListRepository(), []);
   const offClient = useMemo(() => new OpenFoodFactsClient(), []);
   const productLookupService = useMemo(
     () => new ProductLookupService(catalogRepository, offClient),
@@ -42,6 +48,8 @@ export const App: React.FC = () => {
   const barcodeScannerHandler = useMemo(() => new BarcodeScannerHandler(2000), []);
 
   const [session, setSession] = useState<ShoppingSession | null>(null);
+  const [shoppingList, setShoppingList] = useState<ShoppingList | null>(null);
+  const [isShoppingListModalOpen, setIsShoppingListModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
@@ -92,6 +100,29 @@ export const App: React.FC = () => {
     };
   }, [repository]);
 
+  // Hydrate active shopping list on initial load
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadActiveList() {
+      try {
+        const active = await listRepository.getActiveList();
+        if (!mounted) return;
+        if (active) {
+          setShoppingList(active);
+        }
+      } catch (err) {
+        console.error('Error hydrating shopping list:', err);
+      }
+    }
+
+    loadActiveList();
+
+    return () => {
+      mounted = false;
+    };
+  }, [listRepository]);
+
   // Clone helper to trigger React state updates and persist
   const commitSession = (updatedSession: ShoppingSession) => {
     repository.save(updatedSession).catch((err) => {
@@ -109,6 +140,72 @@ export const App: React.FC = () => {
     setSession(cloned);
   };
 
+  const commitShoppingList = (updatedList: ShoppingList) => {
+    listRepository.save(updatedList).catch((err) => {
+      console.error('Failed to save shopping list to storage:', err);
+    });
+
+    const cloned = new ShoppingList({
+      id: updatedList.id,
+      title: updatedList.title,
+      createdAt: updatedList.createdAt,
+      updatedAt: updatedList.updatedAt,
+      items: updatedList.items,
+    });
+    setShoppingList(cloned);
+  };
+
+  const checkAndCrossOffShoppingList = (itemName: string, cartItemId: string) => {
+    if (!shoppingList || shoppingList.items.length === 0) return null;
+    const matched = ShoppingListMatcherService.findMatch(itemName, shoppingList.items);
+    if (matched) {
+      shoppingList.checkItem(matched.id, cartItemId);
+      commitShoppingList(shoppingList);
+      return matched;
+    }
+    return null;
+  };
+
+  const handleToggleListItem = (itemId: string) => {
+    if (!shoppingList) return;
+    shoppingList.toggleItem(itemId);
+    commitShoppingList(shoppingList);
+  };
+
+  const handleAddListItem = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const list = shoppingList ?? ShoppingList.create({ title: 'Lista de la compra' });
+    list.addItem(trimmed);
+    commitShoppingList(list);
+  };
+
+  const handleImportListText = (text: string) => {
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim().replace(/^[-*•\d.)\]\s]+/, '').trim())
+      .filter((l) => l.length > 0);
+    if (lines.length === 0) return;
+
+    const list = shoppingList ?? ShoppingList.create({ title: 'Lista de la compra' });
+    for (const line of lines) {
+      list.addItem(line);
+    }
+    commitShoppingList(list);
+  };
+
+  const handleDeleteListItem = (itemId: string) => {
+    if (!shoppingList) return;
+    shoppingList.removeItem(itemId);
+    commitShoppingList(shoppingList);
+  };
+
+  const handleClearCompletedList = () => {
+    if (!shoppingList) return;
+    shoppingList.clearCompleted();
+    commitShoppingList(shoppingList);
+  };
+
   const handleUpdateStoreName = (name: string) => {
     if (!session) return;
     session.storeName = name;
@@ -117,13 +214,19 @@ export const App: React.FC = () => {
 
   const handleAddItem = (name: string, price: Money, isBulk: boolean) => {
     if (!session) return;
-    session.addItem({
+    const newItem = session.addItem({
       name,
       unitPrice: price,
       quantity: 1,
       isBulk,
     });
     commitSession(session);
+
+    const matched = checkAndCrossOffShoppingList(name, newItem.id);
+    if (matched) {
+      setToastMessage(`✓ Tachado: ${matched.name}`);
+      setIsToastOpen(true);
+    }
   };
 
   const handleIncrementQuantity = (itemId: string) => {
@@ -141,7 +244,17 @@ export const App: React.FC = () => {
     if (!item) return;
 
     // Reducir cantidad (o eliminar si es 1)
-    session.updateItemQuantity(itemId, item.quantity - 1);
+    if (item.quantity <= 1) {
+      session.removeItem(itemId);
+      if (shoppingList) {
+        const unchecked = shoppingList.uncheckByCartItemId(itemId);
+        if (unchecked) {
+          commitShoppingList(shoppingList);
+        }
+      }
+    } else {
+      session.updateItemQuantity(itemId, item.quantity - 1);
+    }
     commitSession(session);
   };
 
@@ -149,6 +262,13 @@ export const App: React.FC = () => {
     if (!session) return;
     session.removeItem(itemId);
     commitSession(session);
+
+    if (shoppingList) {
+      const unchecked = shoppingList.uncheckByCartItemId(itemId);
+      if (unchecked) {
+        commitShoppingList(shoppingList);
+      }
+    }
   };
 
   const handleSavePrice = (itemId: string, newPrice: Money) => {
@@ -212,12 +332,18 @@ export const App: React.FC = () => {
       commitSession(session);
       Haptics.triggerScanSuccess();
 
+      const matched = checkAndCrossOffShoppingList(existingItem.name, item.id);
+
       setUndoState({
         itemId: item.id,
         previousQuantity: existingItem.quantity,
         itemName: existingItem.name,
       });
-      setToastMessage(`Añadido: ${existingItem.name} (${item.quantity} uds en total)`);
+      if (matched) {
+        setToastMessage(`✓ Tachado: ${matched.name}`);
+      } else {
+        setToastMessage(`Añadido: ${existingItem.name} (${item.quantity} uds en total)`);
+      }
       setIsToastOpen(true);
     } else {
       // New barcode in cart: lookup in local catalog / Open Food Facts / Scale
@@ -247,12 +373,18 @@ export const App: React.FC = () => {
       console.error('Failed to save product reference to catalog:', err);
     });
 
+    const matched = checkAndCrossOffShoppingList(name, item.id);
+
     setUndoState({
       itemId: item.id,
       previousQuantity: 0,
       itemName: item.name,
     });
-    setToastMessage(`Añadido: ${item.name}`);
+    if (matched) {
+      setToastMessage(`✓ Tachado: ${matched.name}`);
+    } else {
+      setToastMessage(`Añadido: ${item.name}`);
+    }
     setIsToastOpen(true);
 
     setIsScanPriceModalOpen(false);
@@ -272,12 +404,18 @@ export const App: React.FC = () => {
     commitSession(session);
     Haptics.triggerScanSuccess();
 
+    const matched = checkAndCrossOffShoppingList(tag.name, newItem.id);
+
     setUndoState({
       itemId: newItem.id,
       previousQuantity: 0,
       itemName: newItem.name,
     });
-    setToastMessage(`Añadido: ${newItem.name} (${newItem.unitPrice.format()})`);
+    if (matched) {
+      setToastMessage(`✓ Tachado: ${matched.name}`);
+    } else {
+      setToastMessage(`Añadido: ${newItem.name} (${newItem.unitPrice.format()})`);
+    }
     setIsToastOpen(true);
   };
 
@@ -293,6 +431,12 @@ export const App: React.FC = () => {
 
     if (undoState.previousQuantity <= 0) {
       session.removeItem(undoState.itemId);
+      if (shoppingList) {
+        const unchecked = shoppingList.uncheckByCartItemId(undoState.itemId);
+        if (unchecked) {
+          commitShoppingList(shoppingList);
+        }
+      }
     } else {
       session.updateItemQuantity(undoState.itemId, undoState.previousQuantity);
     }
@@ -335,8 +479,23 @@ export const App: React.FC = () => {
         onClearCart={handleClearCart}
         onOpenFinishModal={() => setIsFinishModalOpen(true)}
         onOpenHistory={() => setIsHistoryModalOpen(true)}
+        onOpenShoppingList={() => setIsShoppingListModalOpen(true)}
+        shoppingListProgress={
+          shoppingList && shoppingList.items.length > 0
+            ? {
+                completed: shoppingList.progress().completed,
+                total: shoppingList.progress().total,
+              }
+            : undefined
+        }
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+      />
+
+      <ShoppingListBanner
+        shoppingList={shoppingList}
+        onOpenModal={() => setIsShoppingListModalOpen(true)}
+        onToggleItem={handleToggleListItem}
       />
 
       <main className="main-content">
@@ -409,6 +568,17 @@ export const App: React.FC = () => {
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
         sessionRepository={repository}
+      />
+
+      <ShoppingListModal
+        isOpen={isShoppingListModalOpen}
+        onClose={() => setIsShoppingListModalOpen(false)}
+        shoppingList={shoppingList}
+        onAddItem={handleAddListItem}
+        onImportText={handleImportListText}
+        onToggleItem={handleToggleListItem}
+        onDeleteItem={handleDeleteListItem}
+        onClearCompleted={handleClearCompletedList}
       />
     </div>
   );

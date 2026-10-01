@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Store, Pencil, Check, Trash2, ShoppingBag, History, Download, Search, X } from 'lucide-react';
+import { Store, Pencil, Check, Trash2, ShoppingBag, History, Download, Search, X, ListTodo } from 'lucide-react';
 import { usePwaInstall } from '../hooks/usePwaInstall.js';
 
 export interface HeaderProps {
@@ -11,6 +11,8 @@ export interface HeaderProps {
   onOpenFinishModal: () => void;
   onOpenHistory?: () => void;
   onOpenHistoryModal?: () => void;
+  onOpenShoppingList?: () => void;
+  shoppingListProgress?: { completed: number; total: number };
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
 }
@@ -24,6 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenFinishModal,
   onOpenHistory,
   onOpenHistoryModal,
+  onOpenShoppingList,
+  shoppingListProgress,
   searchQuery = '',
   onSearchChange,
 }) => {
@@ -129,10 +133,28 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={promptInstall}
             title="Instalar CestaCuenta como app"
             aria-label="Instalar app en la pantalla de inicio"
-            style={{ backgroundColor: '#059669', color: '#ffffff' }}
+            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-text)' }}
           >
             <Download size={16} />
             <span>Instalar</span>
+          </button>
+        )}
+
+        {onOpenShoppingList && (
+          <button
+            type="button"
+            className="btn-header-action"
+            onClick={onOpenShoppingList}
+            title="Ver lista de compra"
+            aria-label="Ver lista de compra"
+          >
+            <ListTodo size={16} />
+            <span>Lista</span>
+            {shoppingListProgress && shoppingListProgress.total > 0 && (
+              <span className="header-badge-pill tabular-nums">
+                {shoppingListProgress.completed}/{shoppingListProgress.total}
+              </span>
+            )}
           </button>
         )}
 
@@ -179,7 +201,7 @@ export const Header: React.FC<HeaderProps> = ({
       {isSearchOpen && onSearchChange && (
         <div className="header-search-row" style={{ width: '100%', marginTop: '8px' }}>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
-            <Search size={16} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
+            <Search size={16} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
             <input
               type="text"
               className="store-name-input"
@@ -187,9 +209,10 @@ export const Header: React.FC<HeaderProps> = ({
                 width: '100%',
                 paddingLeft: '34px',
                 paddingRight: searchQuery ? '32px' : '10px',
-                backgroundColor: '#1e293b',
+                backgroundColor: 'var(--bg-surface-elevated)',
                 borderRadius: '8px',
-                border: '1px solid #334155',
+                border: '1px solid var(--border-bold)',
+                color: 'var(--text-main)',
                 fontSize: '0.9rem',
               }}
               placeholder="Buscar por nombre o código..."
@@ -207,7 +230,7 @@ export const Header: React.FC<HeaderProps> = ({
                   right: '8px',
                   background: 'transparent',
                   border: 'none',
-                  color: '#94a3b8',
+                  color: 'var(--text-muted)',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
