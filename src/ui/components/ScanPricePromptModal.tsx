@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, AlertCircle, Barcode, Check, Database, Globe, Scale, ScanText } from 'lucide-react';
-import { Money, ProductLookupSource } from '../../domain/index.js';
+import { X, Plus, AlertCircle, Barcode, Check, Database, Globe, Scale, ScanText, TrendingUp, TrendingDown, Minus, Award } from 'lucide-react';
+import {
+  Money,
+  ProductLookupSource,
+  ProductPriceComparisonResult,
+  StorePriceHistoryService,
+  PriceDelta,
+} from '../../domain/index.js';
 import { OcrPriceScannerModal } from './OcrPriceScannerModal.js';
 
 export interface ScanPricePromptModalProps {
@@ -10,8 +16,11 @@ export interface ScanPricePromptModalProps {
   initialPrice?: Money;
   isScale?: boolean;
   source?: ProductLookupSource;
+  currentStore?: string;
+  priceHistoryService?: StorePriceHistoryService;
   onClose: () => void;
   onConfirm: (name: string, price: Money, isBulk: boolean) => void;
+  onViewPriceHistory?: (comparison: ProductPriceComparisonResult) => void;
 }
 
 export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
@@ -21,12 +30,22 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
   initialPrice,
   isScale,
   source,
+  currentStore,
+  priceHistoryService,
   onClose,
   onConfirm,
+  onViewPriceHistory,
 }) => {
-  const [name, setName] = useState('');
-  const [priceInput, setPriceInput] = useState('');
-  const [isBulk, setIsBulk] = useState(false);
+  const initialDefaultName =
+    initialName && initialName.trim().length > 0
+      ? initialName.trim()
+      : `Producto ${barcode}`;
+
+  const [name, setName] = useState(initialDefaultName);
+  const [priceInput, setPriceInput] = useState(
+    initialPrice ? initialPrice.toDecimalString() : ''
+  );
+  const [isBulk, setIsBulk] = useState(Boolean(isScale));
   const [error, setError] = useState<string | null>(null);
   const [isOcrOpen, setIsOcrOpen] = useState(false);
   const priceInputRef = useRef<HTMLInputElement>(null);
@@ -91,14 +110,38 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
   };
 
   let isPriceValid = false;
+  let parsedCurrentPrice: Money | null = null;
   try {
     if (priceInput.trim()) {
-      const parsed = Money.parse(priceInput);
-      isPriceValid = parsed.cents > 0;
+      parsedCurrentPrice = Money.parse(priceInput);
+      isPriceValid = parsedCurrentPrice.cents > 0;
     }
   } catch {
     isPriceValid = false;
   }
+
+  // Price history queries
+  const historyObs = priceHistoryService?.getLastPriceAtStore({
+    storeName: currentStore,
+    barcode,
+    name: name || initialName || '',
+  });
+
+  const bestObs = priceHistoryService?.getBestPrice({
+    barcode,
+    name: name || initialName || '',
+  });
+
+  let liveDelta: PriceDelta | null = null;
+  if (isPriceValid && parsedCurrentPrice && historyObs) {
+    liveDelta = StorePriceHistoryService.computeDelta(parsedCurrentPrice, historyObs.price);
+  }
+
+  // Cross-store savings alert: bestObs is cheaper than current store or cheaper than current typed price
+  const showBestPriceAlert =
+    bestObs &&
+    bestObs.storeName !== (currentStore?.trim() || 'Supermercado') &&
+    (historyObs ? bestObs.price.cents < historyObs.price.cents : true);
 
   return (
     <div
@@ -138,6 +181,13 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
                 </span>
               )}
             </div>
+
+            {/* Previous price at current store banner */}
+            {historyObs && (
+              <div className="scan-history-banner">
+                <span>{`Última vez en ${historyObs.storeName}: ${historyObs.price.toFormattedString()}`}</span>
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -148,6 +198,35 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
             <X size={20} />
           </button>
         </div>
+
+        {/* Cross-store best price alert */}
+        {showBestPriceAlert && (
+          <div className="scan-best-price-alert">
+            <div className="best-price-alert-text">
+              <Award size={15} />
+              <span>{`Mínimo histórico: ${bestObs.price.toFormattedString()} en ${bestObs.storeName}`}</span>
+            </div>
+            {onViewPriceHistory && priceHistoryService && (
+              <button
+                type="button"
+                className="btn-link-view-history"
+                onClick={() => {
+                  const comparison = priceHistoryService.comparePrice({
+                    currentPrice: parsedCurrentPrice ?? initialPrice ?? historyObs?.price ?? bestObs.price,
+                    currentStore,
+                    barcode,
+                    name: name || initialDefaultName,
+                  });
+                  if (comparison) {
+                    onViewPriceHistory(comparison);
+                  }
+                }}
+              >
+                Ver historial
+              </button>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="form-group">
@@ -179,6 +258,19 @@ export const ScanPricePromptModal: React.FC<ScanPricePromptModalProps> = ({
               aria-invalid={Boolean(error)}
               aria-describedby={error ? 'scan-price-error' : undefined}
             />
+
+            {/* Dynamic live delta feedback chip */}
+            {liveDelta && (
+              <div className={`live-delta-chip live-delta-chip--${liveDelta.direction.toLowerCase()}`}>
+                {liveDelta.direction === 'UP' && <TrendingUp size={14} />}
+                {liveDelta.direction === 'DOWN' && <TrendingDown size={14} />}
+                {liveDelta.direction === 'EQUAL' && <Minus size={14} />}
+                <span>
+                  {`${liveDelta.direction === 'UP' ? '▲ ' : liveDelta.direction === 'DOWN' ? '▼ ' : '= '}${liveDelta.formattedDiff} (${liveDelta.formattedPercent}) vs anterior`}
+                </span>
+              </div>
+            )}
+
             {error && (
               <div id="scan-price-error" className="input-feedback-error" role="alert">
                 <AlertCircle size={14} />

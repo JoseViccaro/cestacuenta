@@ -130,4 +130,56 @@ describe('ProductLookupService', () => {
     expect(result.source).toBe('NONE');
     expect(result.name).toBeUndefined();
   });
+
+  it('suggests store-specific last price when available in history service', async () => {
+    const localProduct = new ProductReference({
+      barcode: '8410123456789',
+      name: 'Leche Entera 1L',
+      lastPrice: Money.fromCents(125), // Catalog default price
+    });
+    await catalogRepo.save(localProduct);
+
+    // History has Mercadona at 1.35
+    const mockHistoryService = {
+      getLastPriceAtStore: vi.fn().mockReturnValue({
+        price: Money.fromCents(135),
+        storeName: 'Mercadona',
+        date: new Date(),
+        productName: 'Leche Entera 1L',
+        sessionId: 's-1',
+        isPromotional: false,
+      }),
+    };
+
+    const service = new ProductLookupService(catalogRepo, mockOffClient, mockHistoryService as any);
+    const result = await service.lookup('8410123456789', 'Mercadona');
+
+    expect(result.source).toBe('LOCAL');
+    expect(result.suggestedPrice?.cents).toBe(135); // Store-specific price takes precedence
+    expect(mockHistoryService.getLastPriceAtStore).toHaveBeenCalledWith({
+      storeName: 'Mercadona',
+      barcode: '8410123456789',
+      name: 'Leche Entera 1L',
+    });
+  });
+
+  it('falls back to catalog lastPrice when history service has no observation for store', async () => {
+    const localProduct = new ProductReference({
+      barcode: '8410123456789',
+      name: 'Leche Entera 1L',
+      lastPrice: Money.fromCents(125),
+    });
+    await catalogRepo.save(localProduct);
+
+    const mockHistoryService = {
+      getLastPriceAtStore: vi.fn().mockReturnValue(null),
+    };
+
+    const service = new ProductLookupService(catalogRepo, mockOffClient, mockHistoryService as any);
+    const result = await service.lookup('8410123456789', 'Carrefour');
+
+    expect(result.source).toBe('LOCAL');
+    expect(result.suggestedPrice?.cents).toBe(125);
+  });
 });
+

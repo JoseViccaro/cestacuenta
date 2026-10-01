@@ -1,16 +1,18 @@
 import React from 'react';
 import { ShoppingList } from '../../domain/index.js';
-import { ListTodo, Check, Plus, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { ListTodo, Check, Plus, ChevronRight, CheckCircle2, Mic } from 'lucide-react';
 
 export interface ShoppingListBannerProps {
   shoppingList: ShoppingList | null;
   onOpenModal: () => void;
+  onOpenVoiceModal?: () => void;
   onToggleItem: (itemId: string) => void;
 }
 
 export const ShoppingListBanner: React.FC<ShoppingListBannerProps> = ({
   shoppingList,
   onOpenModal,
+  onOpenVoiceModal,
   onToggleItem,
 }) => {
   const items = shoppingList?.items ?? [];
@@ -24,15 +26,29 @@ export const ShoppingListBanner: React.FC<ShoppingListBannerProps> = ({
             <ListTodo size={18} className="shopping-list-icon" aria-hidden="true" />
             <span>¿Tienes una lista para hoy?</span>
           </div>
-          <button
-            type="button"
-            className="btn-create-shopping-list"
-            onClick={onOpenModal}
-            aria-label="Crear o pegar lista de compra"
-          >
-            <Plus size={16} aria-hidden="true" />
-            <span>+ Crear o pegar lista de compra</span>
-          </button>
+          <div className="shopping-list-empty-actions">
+            <button
+              type="button"
+              className="btn-create-shopping-list"
+              onClick={onOpenModal}
+              aria-label="Crear o pegar lista de compra"
+            >
+              <Plus size={16} aria-hidden="true" />
+              <span>+ Crear o pegar lista de compra</span>
+            </button>
+            {onOpenVoiceModal && (
+              <button
+                type="button"
+                className="btn-quick-voice"
+                onClick={onOpenVoiceModal}
+                aria-label="Dictar lista por voz"
+                title="Dictar por voz"
+              >
+                <Mic size={16} aria-hidden="true" />
+                <span>Voz</span>
+              </button>
+            )}
+          </div>
         </div>
       </section>
     );
@@ -64,6 +80,17 @@ export const ShoppingListBanner: React.FC<ShoppingListBannerProps> = ({
             <ChevronRight size={16} className="shopping-list-chevron" aria-hidden="true" />
           </div>
         </button>
+        {onOpenVoiceModal && (
+          <button
+            type="button"
+            className="btn-banner-voice-quick"
+            onClick={onOpenVoiceModal}
+            aria-label="Dictar artículos a la lista"
+            title="Dictar por voz"
+          >
+            <Mic size={16} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       <div

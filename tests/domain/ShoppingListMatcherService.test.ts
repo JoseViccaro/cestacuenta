@@ -147,6 +147,40 @@ describe('ShoppingListMatcherService', () => {
     });
   });
 
+  describe('findMatch: Dictated quantity stop words matching', () => {
+    it('matches item with digit prefix against scanned cart product', () => {
+      // Dictated: "2 leche", scanned: "Leche Pascual Entera 1L"
+      const items = [createItem('2 leche')];
+      const match = findMatch('Leche Pascual Entera 1L', items);
+      expect(match).not.toBeNull();
+      expect(match?.name).toBe('2 leche');
+    });
+
+    it('matches item with Spanish number words against scanned product', () => {
+      // Dictated: "dos paquetes de arroz", scanned: "Arroz SOS Redondo 1kg"
+      const items = [createItem('dos paquetes de arroz')];
+      const match = findMatch('Arroz SOS Redondo 1kg', items);
+      expect(match).not.toBeNull();
+      expect(match?.name).toBe('dos paquetes de arroz');
+    });
+
+    it('matches item with quantity digits and multi-word product name', () => {
+      // Dictated: "3 manzana fuji", scanned: "Manzana Fuji Bolsa 1.5kg"
+      const items = [createItem('3 manzana fuji')];
+      const match = findMatch('Manzana Fuji Bolsa 1.5kg', items);
+      expect(match).not.toBeNull();
+      expect(match?.name).toBe('3 manzana fuji');
+    });
+
+    it('filters out grocery units like medio, kilo, litro from significant words', () => {
+      // Dictated: "medio kilo de tomate", scanned: "Tomate En Rama 1kg"
+      const items = [createItem('medio kilo de tomate')];
+      const match = findMatch('Tomate En Rama 1kg', items);
+      expect(match).not.toBeNull();
+      expect(match?.name).toBe('medio kilo de tomate');
+    });
+  });
+
   describe('findMatch: Invariants and edge cases', () => {
     it('ignores checked items and only matches unchecked items', () => {
       const checkedLeche = createItem('leche', true, 'checked-leche');

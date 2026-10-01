@@ -9,6 +9,8 @@ import {
   ProductLookupResult,
   ShoppingList,
   ShoppingListMatcherService,
+  StorePriceHistoryService,
+  ProductPriceComparisonResult,
 } from '../domain/index.js';
 import { LocalStorageShoppingSessionRepository } from '../infrastructure/persistence/web/LocalStorageShoppingSessionRepository.js';
 import { LocalStorageProductCatalogRepository } from '../infrastructure/persistence/web/LocalStorageProductCatalogRepository.js';
@@ -27,6 +29,7 @@ import { ToastUndo } from './components/ToastUndo.js';
 import { HistoryModal } from './components/HistoryModal.js';
 import { ShoppingListBanner } from './components/ShoppingListBanner.js';
 import { ShoppingListModal } from './components/ShoppingListModal.js';
+import { ProductPriceHistoryModal } from './components/ProductPriceHistoryModal.js';
 
 const DEFAULT_STORE_NAME = 'Mi Supermercado';
 
@@ -41,15 +44,17 @@ export const App: React.FC = () => {
   const catalogRepository = useMemo(() => new LocalStorageProductCatalogRepository(), []);
   const listRepository = useMemo(() => new LocalStorageShoppingListRepository(), []);
   const offClient = useMemo(() => new OpenFoodFactsClient(), []);
+  const storePriceHistoryService = useMemo(() => new StorePriceHistoryService(), []);
   const productLookupService = useMemo(
-    () => new ProductLookupService(catalogRepository, offClient),
-    [catalogRepository, offClient]
+    () => new ProductLookupService(catalogRepository, offClient, storePriceHistoryService),
+    [catalogRepository, offClient, storePriceHistoryService]
   );
   const barcodeScannerHandler = useMemo(() => new BarcodeScannerHandler(2000), []);
 
   const [session, setSession] = useState<ShoppingSession | null>(null);
   const [shoppingList, setShoppingList] = useState<ShoppingList | null>(null);
   const [isShoppingListModalOpen, setIsShoppingListModalOpen] = useState(false);
+  const [shoppingListModalMode, setShoppingListModalMode] = useState<'single' | 'paste' | 'voice'>('single');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
@@ -62,6 +67,15 @@ export const App: React.FC = () => {
   const [pendingLookupResult, setPendingLookupResult] = useState<ProductLookupResult | null>(null);
   const [isScanPriceModalOpen, setIsScanPriceModalOpen] = useState(false);
 
+  // Price History Modal state
+  const [selectedPriceComparison, setSelectedPriceComparison] = useState<ProductPriceComparisonResult | null>(null);
+  const [isPriceHistoryModalOpen, setIsPriceHistoryModalOpen] = useState(false);
+
+  const handleViewPriceHistory = (comparison: ProductPriceComparisonResult) => {
+    setSelectedPriceComparison(comparison);
+    setIsPriceHistoryModalOpen(true);
+  };
+
   // Undo Toast state
   const [undoState, setUndoState] = useState<UndoState | null>(null);
   const [toastMessage, setToastMessage] = useState<string>('');
@@ -69,6 +83,28 @@ export const App: React.FC = () => {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Hydrate store price history on initial load
+  useEffect(() => {
+    let mounted = true;
+
+    async function hydratePriceHistory() {
+      try {
+        const pastSessions = await repository.listHistory();
+        if (mounted && pastSessions) {
+          storePriceHistoryService.buildIndex(pastSessions);
+        }
+      } catch (err) {
+        console.error('Failed to hydrate price history:', err);
+      }
+    }
+
+    hydratePriceHistory();
+
+    return () => {
+      mounted = false;
+    };
+  }, [repository, storePriceHistoryService]);
 
   // Hydrate active session on initial load
   useEffect(() => {
@@ -296,6 +332,9 @@ export const App: React.FC = () => {
     session.complete();
     await repository.save(session);
 
+    // Incrementally update price history index
+    storePriceHistoryService.indexSession(session);
+
     // Increment history key so HistoryModal reloads the completed purchase
     setHistoryRefreshKey((k) => k + 1);
 
@@ -347,7 +386,7 @@ export const App: React.FC = () => {
       setIsToastOpen(true);
     } else {
       // New barcode in cart: lookup in local catalog / Open Food Facts / Scale
-      const lookupResult = await productLookupService.lookup(trimmed);
+      const lookupResult = await productLookupService.lookup(trimmed, session.storeName);
       setPendingScanCode(trimmed);
       setPendingLookupResult(lookupResult);
       setIsScanPriceModalOpen(true);
@@ -494,17 +533,27 @@ export const App: React.FC = () => {
 
       <ShoppingListBanner
         shoppingList={shoppingList}
-        onOpenModal={() => setIsShoppingListModalOpen(true)}
+        onOpenModal={() => {
+          setShoppingListModalMode('single');
+          setIsShoppingListModalOpen(true);
+        }}
+        onOpenVoiceModal={() => {
+          setShoppingListModalMode('voice');
+          setIsShoppingListModalOpen(true);
+        }}
         onToggleItem={handleToggleListItem}
       />
 
       <main className="main-content">
         <CartList
           items={filteredItems}
+          currentStore={session.storeName}
+          priceHistoryService={storePriceHistoryService}
           onIncrementQuantity={handleIncrementQuantity}
           onDecrementQuantity={handleDecrementQuantity}
           onDeleteItem={handleDeleteItem}
           onEditPrice={(item) => setEditingItem(item)}
+          onViewPriceHistory={handleViewPriceHistory}
         />
       </main>
 
@@ -539,8 +588,11 @@ export const App: React.FC = () => {
         initialPrice={pendingLookupResult?.suggestedPrice}
         isScale={pendingLookupResult?.isScale}
         source={pendingLookupResult?.source}
+        currentStore={session.storeName}
+        priceHistoryService={storePriceHistoryService}
         onClose={handleCloseScanPriceModal}
         onConfirm={handleConfirmScanPrice}
+        onViewPriceHistory={handleViewPriceHistory}
       />
 
       <ManualItemModal
@@ -552,6 +604,8 @@ export const App: React.FC = () => {
       <EditPriceModal
         isOpen={Boolean(editingItem)}
         item={editingItem}
+        currentStore={session.storeName}
+        priceHistoryService={storePriceHistoryService}
         onClose={() => setEditingItem(null)}
         onSavePrice={handleSavePrice}
       />
@@ -572,6 +626,7 @@ export const App: React.FC = () => {
 
       <ShoppingListModal
         isOpen={isShoppingListModalOpen}
+        initialMode={shoppingListModalMode}
         onClose={() => setIsShoppingListModalOpen(false)}
         shoppingList={shoppingList}
         onAddItem={handleAddListItem}
@@ -579,6 +634,15 @@ export const App: React.FC = () => {
         onToggleItem={handleToggleListItem}
         onDeleteItem={handleDeleteListItem}
         onClearCompleted={handleClearCompletedList}
+      />
+
+      <ProductPriceHistoryModal
+        isOpen={isPriceHistoryModalOpen}
+        comparison={selectedPriceComparison}
+        onClose={() => {
+          setIsPriceHistoryModalOpen(false);
+          setSelectedPriceComparison(null);
+        }}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 import { Money } from '../value-objects/Money.js';
 import { ProductCatalogRepository } from '../repositories/ProductCatalogRepository.js';
 import { isScaleBarcode, extractScalePriceCents } from './ScaleBarcodeDetector.js';
+import { StorePriceHistoryService } from './StorePriceHistoryService.js';
 
 export interface OpenFoodFactsLookupClient {
   fetchProduct(barcode: string): Promise<{ barcode: string; name: string } | null>;
@@ -19,20 +20,33 @@ export interface ProductLookupResult {
 export class ProductLookupService {
   constructor(
     private readonly catalogRepository: ProductCatalogRepository,
-    private readonly offClient?: OpenFoodFactsLookupClient
+    private readonly offClient?: OpenFoodFactsLookupClient,
+    private readonly priceHistoryService?: StorePriceHistoryService
   ) {}
 
-  async lookup(barcode: string): Promise<ProductLookupResult> {
+  async lookup(barcode: string, currentStore?: string): Promise<ProductLookupResult> {
     const cleanBarcode = barcode?.trim() ?? '';
     const isScale = isScaleBarcode(cleanBarcode);
 
     // 1. Buscar en catálogo local persistente
     const local = await this.catalogRepository.findByBarcode(cleanBarcode);
     if (local) {
+      let suggestedPrice = local.lastPrice;
+      if (this.priceHistoryService && currentStore) {
+        const storeObs = this.priceHistoryService.getLastPriceAtStore({
+          storeName: currentStore,
+          barcode: cleanBarcode,
+          name: local.name,
+        });
+        if (storeObs) {
+          suggestedPrice = storeObs.price;
+        }
+      }
+
       return {
         barcode: cleanBarcode,
         name: local.name,
-        suggestedPrice: local.lastPrice,
+        suggestedPrice,
         isScale,
         source: 'LOCAL',
       };
@@ -43,10 +57,22 @@ export class ProductLookupService {
       try {
         const offProduct = await this.offClient.fetchProduct(cleanBarcode);
         if (offProduct && offProduct.name.trim().length > 0) {
+          let suggestedPrice: Money | undefined;
+          if (this.priceHistoryService && currentStore) {
+            const storeObs = this.priceHistoryService.getLastPriceAtStore({
+              storeName: currentStore,
+              barcode: cleanBarcode,
+              name: offProduct.name.trim(),
+            });
+            if (storeObs) {
+              suggestedPrice = storeObs.price;
+            }
+          }
+
           return {
             barcode: cleanBarcode,
             name: offProduct.name.trim(),
-            suggestedPrice: undefined,
+            suggestedPrice,
             isScale: false,
             source: 'OPEN_FOOD_FACTS',
           };
@@ -59,7 +85,18 @@ export class ProductLookupService {
     // 3. Fallback cuando no se encuentra en ninguna fuente
     // Si es código de báscula, intentar extraer el precio embebido en el código
     const scaleCents = isScale ? extractScalePriceCents(cleanBarcode) : null;
-    const suggestedPrice = scaleCents ? Money.fromCents(scaleCents) : undefined;
+    let suggestedPrice = scaleCents ? Money.fromCents(scaleCents) : undefined;
+
+    if (!suggestedPrice && this.priceHistoryService && currentStore) {
+      const storeObs = this.priceHistoryService.getLastPriceAtStore({
+        storeName: currentStore,
+        barcode: cleanBarcode,
+        name: '',
+      });
+      if (storeObs) {
+        suggestedPrice = storeObs.price;
+      }
+    }
 
     return {
       barcode: cleanBarcode,

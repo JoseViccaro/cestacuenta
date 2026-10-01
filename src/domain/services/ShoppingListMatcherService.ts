@@ -20,6 +20,35 @@ export const SPANISH_STOP_WORDS = new Set([
   'e',
   'unos',
   'unas',
+  // Digits
+  '0',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  // Common Spanish numeral words
+  'dos',
+  'tres',
+  'cuatro',
+  'cinco',
+  'seis',
+  'siete',
+  'ocho',
+  'nueve',
+  'diez',
+  // Common grocery measure units
+  'medio',
+  'kilo',
+  'kilos',
+  'litro',
+  'litros',
+  'paquete',
+  'paquetes',
 ]);
 
 export function normalizeText(text: string): string {

@@ -74,4 +74,97 @@ describe('ShoppingListModal Component', () => {
     // Clear completed button should be present
     expect(html).toContain('Limpiar comprados (1)');
   });
+
+  it('renders all three input mode tabs including Voz', () => {
+    const html = renderToString(
+      <ShoppingListModal
+        isOpen={true}
+        onClose={vi.fn()}
+        shoppingList={null}
+        onAddItem={vi.fn()}
+        onImportText={vi.fn()}
+        onToggleItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onClearCompleted={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('Añadir uno a uno');
+    expect(html).toContain('Pegar texto');
+    expect(html).toContain('Voz');
+  });
+
+  it('renders inline microphone button in single input mode', () => {
+    const html = renderToString(
+      <ShoppingListModal
+        isOpen={true}
+        initialMode="single"
+        onClose={vi.fn()}
+        shoppingList={null}
+        onAddItem={vi.fn()}
+        onImportText={vi.fn()}
+        onToggleItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onClearCompleted={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('btn-inline-mic');
+    expect(html).toContain('Dictar por voz en este campo');
+  });
+
+  it('renders unsupported browser fallback card in voice tab when Web Speech is absent', () => {
+    const html = renderToString(
+      <ShoppingListModal
+        isOpen={true}
+        initialMode="voice"
+        onClose={vi.fn()}
+        shoppingList={null}
+        onAddItem={vi.fn()}
+        onImportText={vi.fn()}
+        onToggleItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onClearCompleted={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('shopping-list-voice-container');
+    expect(html).toContain('voice-fallback-card');
+    expect(html).toContain('Dictado por voz no disponible');
+    expect(html).toContain('Ir a Añadir uno a uno');
+    expect(html).toContain('Ir a Pegar texto');
+  });
+
+  it('renders active microphone button and transcript box when speech recognition is supported', () => {
+    function MockSpeech() {
+      return {};
+    }
+    vi.stubGlobal('window', {
+      SpeechRecognition: MockSpeech,
+      navigator: { vibrate: vi.fn() },
+    });
+
+    try {
+      const html = renderToString(
+        <ShoppingListModal
+          isOpen={true}
+          initialMode="voice"
+          onClose={vi.fn()}
+          shoppingList={null}
+          onAddItem={vi.fn()}
+          onImportText={vi.fn()}
+          onToggleItem={vi.fn()}
+          onDeleteItem={vi.fn()}
+          onClearCompleted={vi.fn()}
+        />
+      );
+
+      expect(html).toContain('shopping-list-voice-container');
+      expect(html).toContain('btn-voice-mic');
+      expect(html).toContain('voice-transcript-box');
+      expect(html).toContain('Toca el micrófono para dictar');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
