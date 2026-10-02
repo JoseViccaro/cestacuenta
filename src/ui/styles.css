@@ -4063,4 +4063,296 @@ input, select, textarea {
   color: var(--text-main);
 }
 
+/* ==========================================================================
+   Live Budget Control Styles
+   ========================================================================== */
+
+/* Budget Gauge in Sticky Bottom Bar */
+.budget-gauge {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.budget-gauge:hover,
+.budget-gauge:focus-visible {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primary-surface);
+}
+
+.budget-gauge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.budget-headroom-text {
+  font-size: 0.825rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.budget-margin-chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.budget-progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--border-subtle);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.budget-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease;
+}
+
+/* Status themes for gauge */
+.budget-gauge--normal .budget-progress-fill {
+  background-color: var(--primary);
+}
+
+.budget-gauge--warning {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.budget-gauge--warning .budget-headroom-text {
+  color: #b45309;
+}
+
+.budget-gauge--warning .budget-progress-fill {
+  background-color: #f59e0b;
+}
+
+.budget-gauge--warning .budget-margin-chip {
+  border-color: #fde68a;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.budget-gauge--exceeded {
+  border-color: var(--danger);
+  background: #fef2f2;
+}
+
+.budget-gauge--exceeded .budget-headroom-text {
+  color: #b91c1c;
+}
+
+.budget-gauge--exceeded .budget-progress-fill {
+  background-color: var(--danger);
+}
+
+.budget-gauge--exceeded .budget-margin-chip {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Header Budget Pill Button */
+.budget-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  min-height: 40px;
+}
+
+.budget-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.budget-status-dot--normal {
+  background-color: #22c55e;
+}
+
+.budget-status-dot--warning {
+  background-color: #f59e0b;
+}
+
+.budget-status-dot--exceeded {
+  background-color: #ef4444;
+}
+
+/* SetBudgetModal Styles */
+.budget-modal-sheet {
+  max-width: 440px;
+}
+
+.budget-input-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.budget-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.budget-amount-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 36px 10px 14px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-bold);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  outline: none;
+}
+
+.budget-amount-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-surface);
+}
+
+.budget-currency-suffix {
+  position: absolute;
+  right: 14px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.preset-chips-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.preset-chips-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.preset-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.preset-chip {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated);
+  color: var(--text-main);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-chip:hover {
+  border-color: var(--primary);
+}
+
+.preset-chip--selected {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+}
+
+.budget-preview-box {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.preview-label {
+  color: var(--text-secondary);
+}
+
+.preview-value {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.preview-row--success .preview-value {
+  color: #166534;
+}
+
+.preview-row--danger .preview-value {
+  color: var(--danger);
+}
+
+.preview-row--pending .preview-value {
+  color: var(--text-main);
+}
+
+.budget-danger-btn {
+  min-height: 48px;
+  padding: 0 16px;
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.budget-danger-btn:hover {
+  background: var(--danger-surface);
+}
+
+.budget-danger-btn:active {
+  transform: scale(0.98);
+}
+
+
 

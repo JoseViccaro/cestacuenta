@@ -13,6 +13,7 @@ interface ShoppingSessionRow {
   ended_at: string | null;
   status: string;
   store_name: string | null;
+  budget_limit_cents: number | null;
 }
 
 interface CartItemRow {
@@ -62,7 +63,8 @@ export class SqliteShoppingSessionRepository implements ShoppingSessionRepositor
         started_at TEXT NOT NULL,
         ended_at TEXT,
         status TEXT NOT NULL,
-        store_name TEXT
+        store_name TEXT,
+        budget_limit_cents INTEGER
       );
 
       CREATE TABLE IF NOT EXISTS cart_items (
@@ -79,14 +81,22 @@ export class SqliteShoppingSessionRepository implements ShoppingSessionRepositor
       CREATE INDEX IF NOT EXISTS idx_cart_items_session_id ON cart_items(session_id);
     `);
 
+    // Safe idempotent column migration for existing databases
+    try {
+      this.db.exec('ALTER TABLE shopping_sessions ADD COLUMN budget_limit_cents INTEGER;');
+    } catch {
+      // Column already exists or table was just created with the column
+    }
+
     this.upsertSessionStmt = this.db.prepare(`
-      INSERT INTO shopping_sessions (id, started_at, ended_at, status, store_name)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO shopping_sessions (id, started_at, ended_at, status, store_name, budget_limit_cents)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         started_at = excluded.started_at,
         ended_at = excluded.ended_at,
         status = excluded.status,
-        store_name = excluded.store_name
+        store_name = excluded.store_name,
+        budget_limit_cents = excluded.budget_limit_cents
     `);
 
     this.deleteCartItemsStmt = this.db.prepare(`
@@ -100,7 +110,7 @@ export class SqliteShoppingSessionRepository implements ShoppingSessionRepositor
     `);
 
     this.selectActiveSessionStmt = this.db.prepare(`
-      SELECT id, started_at, ended_at, status, store_name
+      SELECT id, started_at, ended_at, status, store_name, budget_limit_cents
       FROM shopping_sessions
       WHERE status = 'ACTIVE'
       ORDER BY started_at DESC
@@ -108,7 +118,7 @@ export class SqliteShoppingSessionRepository implements ShoppingSessionRepositor
     `);
 
     this.selectSessionByIdStmt = this.db.prepare(`
-      SELECT id, started_at, ended_at, status, store_name
+      SELECT id, started_at, ended_at, status, store_name, budget_limit_cents
       FROM shopping_sessions
       WHERE id = ?
     `);
@@ -121,7 +131,7 @@ export class SqliteShoppingSessionRepository implements ShoppingSessionRepositor
     `);
 
     this.selectHistoryStmt = this.db.prepare(`
-      SELECT id, started_at, ended_at, status, store_name
+      SELECT id, started_at, ended_at, status, store_name, budget_limit_cents
       FROM shopping_sessions
       WHERE status != 'ACTIVE'
       ORDER BY started_at DESC, rowid DESC
@@ -137,7 +147,8 @@ export class SqliteShoppingSessionRepository implements ShoppingSessionRepositor
         session.startedAt.toISOString(),
         session.endedAt ? session.endedAt.toISOString() : null,
         session.status,
-        session.storeName ?? null
+        session.storeName ?? null,
+        session.budgetLimit?.cents ?? null
       );
 
       this.deleteCartItemsStmt.run(session.id);
@@ -206,6 +217,11 @@ export class SqliteShoppingSessionRepository implements ShoppingSessionRepositor
         })
     );
 
+    const budgetLimit =
+      sessionRow.budget_limit_cents !== null && sessionRow.budget_limit_cents !== undefined
+        ? Money.fromCents(Number(sessionRow.budget_limit_cents))
+        : undefined;
+
     return new ShoppingSession({
       id: sessionRow.id,
       startedAt: new Date(sessionRow.started_at),
@@ -213,6 +229,7 @@ export class SqliteShoppingSessionRepository implements ShoppingSessionRepositor
       status: sessionRow.status as SessionStatus,
       storeName: sessionRow.store_name ?? undefined,
       items,
+      budgetLimit,
     });
   }
 }

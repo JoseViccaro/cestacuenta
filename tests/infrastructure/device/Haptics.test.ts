@@ -68,5 +68,129 @@ describe('Haptics', () => {
       vi.unstubAllGlobals();
     });
   });
+
+  describe('triggerBudgetWarning', () => {
+    it('calls navigator.vibrate([120, 80, 120]) and returns true when supported', () => {
+      const vibrateMock = vi.fn().mockReturnValue(true);
+      vi.stubGlobal('navigator', {
+        vibrate: vibrateMock,
+      });
+
+      const result = Haptics.triggerBudgetWarning();
+      expect(vibrateMock).toHaveBeenCalledWith([120, 80, 120]);
+      expect(result).toBe(true);
+      vi.unstubAllGlobals();
+    });
+
+    it('returns false safely when navigator.vibrate is absent or throws', () => {
+      vi.stubGlobal('navigator', {});
+      expect(Haptics.triggerBudgetWarning()).toBe(false);
+      vi.unstubAllGlobals();
+
+      vi.stubGlobal('navigator', {
+        vibrate: vi.fn().mockImplementation(() => {
+          throw new Error('NotAllowedError');
+        }),
+      });
+      expect(Haptics.triggerBudgetWarning()).toBe(false);
+      vi.unstubAllGlobals();
+    });
+
+    it('handles Web Audio API smoothly and falls back safely when absent or throwing', () => {
+      const mockOscillator = {
+        type: 'sine',
+        frequency: { setValueAtTime: vi.fn() },
+        connect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+      };
+      const mockGain = {
+        gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+        connect: vi.fn(),
+      };
+      const mockAudioCtx = {
+        currentTime: 0,
+        destination: {},
+        createOscillator: vi.fn().mockReturnValue(mockOscillator),
+        createGain: vi.fn().mockReturnValue(mockGain),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      function MockAudioContext() {
+        return mockAudioCtx;
+      }
+
+      vi.stubGlobal('window', {
+        AudioContext: MockAudioContext,
+      });
+
+      expect(() => Haptics.triggerBudgetWarning()).not.toThrow();
+      expect(mockOscillator.frequency.setValueAtTime).toHaveBeenCalledWith(660, 0);
+
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe('triggerBudgetExceeded', () => {
+    it('calls navigator.vibrate([200, 100, 200, 100, 200]) and returns true when supported', () => {
+      const vibrateMock = vi.fn().mockReturnValue(true);
+      vi.stubGlobal('navigator', {
+        vibrate: vibrateMock,
+      });
+
+      const result = Haptics.triggerBudgetExceeded();
+      expect(vibrateMock).toHaveBeenCalledWith([200, 100, 200, 100, 200]);
+      expect(result).toBe(true);
+      vi.unstubAllGlobals();
+    });
+
+    it('returns false safely when navigator.vibrate is absent or throws', () => {
+      vi.stubGlobal('navigator', {});
+      expect(Haptics.triggerBudgetExceeded()).toBe(false);
+      vi.unstubAllGlobals();
+
+      vi.stubGlobal('navigator', {
+        vibrate: vi.fn().mockImplementation(() => {
+          throw new Error('NotAllowedError');
+        }),
+      });
+      expect(Haptics.triggerBudgetExceeded()).toBe(false);
+      vi.unstubAllGlobals();
+    });
+
+    it('handles Web Audio API smoothly and falls back safely when absent or throwing', () => {
+      const mockOscillator = {
+        type: 'triangle',
+        frequency: { setValueAtTime: vi.fn() },
+        connect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+      };
+      const mockGain = {
+        gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+        connect: vi.fn(),
+      };
+      const mockAudioCtx = {
+        currentTime: 0,
+        destination: {},
+        createOscillator: vi.fn().mockReturnValue(mockOscillator),
+        createGain: vi.fn().mockReturnValue(mockGain),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      function MockAudioContext() {
+        return mockAudioCtx;
+      }
+
+      vi.stubGlobal('window', {
+        AudioContext: MockAudioContext,
+      });
+
+      expect(() => Haptics.triggerBudgetExceeded()).not.toThrow();
+      expect(mockOscillator.frequency.setValueAtTime).toHaveBeenCalledWith(440, 0);
+
+      vi.unstubAllGlobals();
+    });
+  });
 });
 

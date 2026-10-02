@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Store, Pencil, Check, Trash2, ShoppingBag, History, Download, Search, X, ListTodo } from 'lucide-react';
+import { Store, Pencil, Check, Trash2, ShoppingBag, History, Download, Search, X, ListTodo, Wallet } from 'lucide-react';
 import { usePwaInstall } from '../hooks/usePwaInstall.js';
+import { BudgetMetrics } from '../../domain/index.js';
 
 export interface HeaderProps {
   storeName: string;
@@ -15,6 +16,8 @@ export interface HeaderProps {
   shoppingListProgress?: { completed: number; total: number };
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  budgetMetrics?: BudgetMetrics | null;
+  onOpenBudgetModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,6 +33,8 @@ export const Header: React.FC<HeaderProps> = ({
   shoppingListProgress,
   searchQuery = '',
   onSearchChange,
+  budgetMetrics,
+  onOpenBudgetModal,
 }) => {
   const [isEditingStore, setIsEditingStore] = useState(false);
   const [tempStoreName, setTempStoreName] = useState(storeName);
@@ -137,6 +142,33 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Download size={16} />
             <span>Instalar</span>
+          </button>
+        )}
+
+        {onOpenBudgetModal && (
+          <button
+            type="button"
+            className="btn-header-action budget-pill-btn"
+            onClick={onOpenBudgetModal}
+            title={
+              budgetMetrics
+                ? `Presupuesto: ${budgetMetrics.limit.toFormattedString()}`
+                : 'Configurar presupuesto de compra'
+            }
+            aria-label={
+              budgetMetrics
+                ? `Presupuesto: ${budgetMetrics.limit.toFormattedString()}. Estado: ${budgetMetrics.status}. Toca para modificar.`
+                : 'Configurar presupuesto de compra'
+            }
+          >
+            <Wallet size={16} />
+            <span>{budgetMetrics ? budgetMetrics.limit.toFormattedString() : '+ Presupuesto'}</span>
+            {budgetMetrics && (
+              <span
+                className={`budget-status-dot budget-status-dot--${budgetMetrics.status.toLowerCase()}`}
+                aria-hidden="true"
+              />
+            )}
           </button>
         )}
 

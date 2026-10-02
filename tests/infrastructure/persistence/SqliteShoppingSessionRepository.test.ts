@@ -440,4 +440,77 @@ describe('SqliteShoppingSessionRepository', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     });
   });
+
+  describe('budgetLimit persistence and schema migration', () => {
+    it('migrates pre-existing database schema missing budget_limit_cents column without error', () => {
+      const preExistingDb = new DatabaseSync(':memory:');
+      // Create legacy table without budget_limit_cents
+      preExistingDb.exec(`
+        CREATE TABLE shopping_sessions (
+          id TEXT PRIMARY KEY,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          status TEXT NOT NULL,
+          store_name TEXT
+        );
+      `);
+
+      // Initializing repository should execute safe ALTER TABLE without error
+      const repo = new SqliteShoppingSessionRepository(preExistingDb);
+      expect(repo).toBeDefined();
+
+      // Check column exists now
+      const tableInfo = preExistingDb.prepare('PRAGMA table_info(shopping_sessions);').all() as Array<{ name: string }>;
+      expect(tableInfo.some((col) => col.name === 'budget_limit_cents')).toBe(true);
+
+      repo.close();
+    });
+
+    it('persists budget_limit_cents and hydrates in getActiveSession, getById, and listHistory', async () => {
+      const session = ShoppingSession.create({ storeName: 'Mercadona' });
+      session.setBudgetLimit(Money.fromCents(6500));
+      session.addItem({
+        name: 'Item 1',
+        unitPrice: Money.fromCents(1000),
+        quantity: 1,
+      });
+
+      await repository.save(session);
+
+      // getActiveSession
+      const active = await repository.getActiveSession();
+      expect(active).not.toBeNull();
+      expect(active!.budgetLimit).toBeDefined();
+      expect(active!.budgetLimit?.cents).toBe(6500);
+      expect(active!.budgetStatus()).toBe('NORMAL');
+
+      // getById
+      const byId = await repository.getById(session.id);
+      expect(byId).not.toBeNull();
+      expect(byId!.budgetLimit?.cents).toBe(6500);
+
+      // Complete and check listHistory
+      session.complete();
+      await repository.save(session);
+
+      const history = await repository.listHistory();
+      expect(history).toHaveLength(1);
+      expect(history[0].budgetLimit).toBeDefined();
+      expect(history[0].budgetLimit?.cents).toBe(6500);
+    });
+
+    it('hydrates legacy rows with NULL budget_limit_cents as undefined budgetLimit', async () => {
+      const db = (repository as unknown as { db: DatabaseSync }).db;
+      db.prepare(`
+        INSERT INTO shopping_sessions (id, started_at, ended_at, status, store_name, budget_limit_cents)
+        VALUES ('legacy-id', '2026-09-01T10:00:00.000Z', NULL, 'ACTIVE', 'Legacy Store', NULL)
+      `).run();
+
+      const active = await repository.getActiveSession();
+      expect(active).not.toBeNull();
+      expect(active!.id).toBe('legacy-id');
+      expect(active!.budgetLimit).toBeUndefined();
+      expect(active!.budgetStatus()).toBe('NONE');
+    });
+  });
 });

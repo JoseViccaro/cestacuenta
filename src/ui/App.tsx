@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShoppingSession,
   Money,
@@ -11,6 +11,8 @@ import {
   ShoppingListMatcherService,
   StorePriceHistoryService,
   ProductPriceComparisonResult,
+  BudgetStatus,
+  BudgetMetrics,
 } from '../domain/index.js';
 import { LocalStorageShoppingSessionRepository } from '../infrastructure/persistence/web/LocalStorageShoppingSessionRepository.js';
 import { LocalStorageProductCatalogRepository } from '../infrastructure/persistence/web/LocalStorageProductCatalogRepository.js';
@@ -30,8 +32,55 @@ import { HistoryModal } from './components/HistoryModal.js';
 import { ShoppingListBanner } from './components/ShoppingListBanner.js';
 import { ShoppingListModal } from './components/ShoppingListModal.js';
 import { ProductPriceHistoryModal } from './components/ProductPriceHistoryModal.js';
+import { SetBudgetModal } from './components/SetBudgetModal.js';
 
 const DEFAULT_STORE_NAME = 'Mi Supermercado';
+
+export function cloneSession(session: ShoppingSession): ShoppingSession {
+  return new ShoppingSession({
+    id: session.id,
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+    status: session.status,
+    storeName: session.storeName,
+    items: session.items,
+    budgetLimit: session.budgetLimit,
+  });
+}
+
+export function handleBudgetTransition(
+  previousStatus: BudgetStatus,
+  currentStatus: BudgetStatus,
+  budgetMetrics: BudgetMetrics | null,
+  callbacks?: {
+    onWarning?: () => void;
+    onExceeded?: () => void;
+  }
+): { triggeredWarning: boolean; triggeredExceeded: boolean; toastMessage: string | null } {
+  if (previousStatus === currentStatus) {
+    return { triggeredWarning: false, triggeredExceeded: false, toastMessage: null };
+  }
+
+  if ((previousStatus === 'NONE' || previousStatus === 'NORMAL') && currentStatus === 'WARNING') {
+    callbacks?.onWarning?.();
+    return {
+      triggeredWarning: true,
+      triggeredExceeded: false,
+      toastMessage: 'Atención: Has alcanzado el 80% de tu presupuesto',
+    };
+  }
+
+  if (previousStatus !== 'EXCEEDED' && currentStatus === 'EXCEEDED' && budgetMetrics) {
+    callbacks?.onExceeded?.();
+    return {
+      triggeredWarning: false,
+      triggeredExceeded: true,
+      toastMessage: `Presupuesto superado: Te has pasado por ${budgetMetrics.overBudget.toFormattedString()}`,
+    };
+  }
+
+  return { triggeredWarning: false, triggeredExceeded: false, toastMessage: null };
+}
 
 interface UndoState {
   itemId: string;
@@ -83,6 +132,37 @@ export const App: React.FC = () => {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Budget Control state
+  const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const lastBudgetStatusRef = useRef<BudgetStatus>('NONE');
+
+  const pendingItemCount = shoppingList ? shoppingList.pendingCount() : 0;
+  const budgetMetrics = session ? session.budgetMetrics(pendingItemCount) : null;
+  const currentBudgetStatus = budgetMetrics ? budgetMetrics.status : 'NONE';
+
+  // Edge-triggered budget threshold transition detector
+  useEffect(() => {
+    const previousStatus = lastBudgetStatusRef.current;
+    if (previousStatus !== currentBudgetStatus) {
+      const result = handleBudgetTransition(
+        previousStatus,
+        currentBudgetStatus,
+        budgetMetrics,
+        {
+          onWarning: () => Haptics.triggerBudgetWarning(),
+          onExceeded: () => Haptics.triggerBudgetExceeded(),
+        }
+      );
+
+      if (result.toastMessage) {
+        setToastMessage(result.toastMessage);
+        setIsToastOpen(true);
+      }
+
+      lastBudgetStatusRef.current = currentBudgetStatus;
+    }
+  }, [currentBudgetStatus, budgetMetrics]);
 
   // Hydrate store price history on initial load
   useEffect(() => {
@@ -165,15 +245,14 @@ export const App: React.FC = () => {
       console.error('Failed to save session to storage:', err);
     });
 
-    const cloned = new ShoppingSession({
-      id: updatedSession.id,
-      startedAt: updatedSession.startedAt,
-      endedAt: updatedSession.endedAt,
-      status: updatedSession.status,
-      storeName: updatedSession.storeName,
-      items: updatedSession.items,
-    });
+    const cloned = cloneSession(updatedSession);
     setSession(cloned);
+  };
+
+  const handleSetBudgetLimit = (limit: Money | null) => {
+    if (!session) return;
+    session.setBudgetLimit(limit);
+    commitSession(session);
   };
 
   const commitShoppingList = (updatedList: ShoppingList) => {
@@ -529,6 +608,8 @@ export const App: React.FC = () => {
         }
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        budgetMetrics={budgetMetrics}
+        onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
       />
 
       <ShoppingListBanner
@@ -567,8 +648,10 @@ export const App: React.FC = () => {
       <StickyBottomBar
         total={total}
         itemCount={totalItemCount}
+        budgetMetrics={budgetMetrics}
         onOpenManualModal={() => setIsManualModalOpen(true)}
         onScanClick={() => setIsScannerOpen(true)}
+        onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
       />
 
       <ScannerModal
@@ -643,6 +726,15 @@ export const App: React.FC = () => {
           setIsPriceHistoryModalOpen(false);
           setSelectedPriceComparison(null);
         }}
+      />
+
+      <SetBudgetModal
+        isOpen={isBudgetModalOpen}
+        currentBudget={session?.budgetLimit ?? null}
+        currentTotal={total}
+        pendingItemCount={pendingItemCount}
+        onClose={() => setIsBudgetModalOpen(false)}
+        onSaveBudget={handleSetBudgetLimit}
       />
     </div>
   );

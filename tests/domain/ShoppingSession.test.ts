@@ -316,4 +316,184 @@ describe('ShoppingSession Entity', () => {
       expect(session.items).toHaveLength(1);
     });
   });
+
+  describe('Budget Management and Live Guardrails', () => {
+    it('initializes with budgetLimit undefined by default and creates with budgetLimit', () => {
+      const sessionDefault = ShoppingSession.create();
+      expect(sessionDefault.budgetLimit).toBeUndefined();
+
+      const limit = Money.fromCents(5000);
+      const sessionWithLimit = new ShoppingSession({ budgetLimit: limit });
+      expect(sessionWithLimit.budgetLimit).toBeDefined();
+      expect(sessionWithLimit.budgetLimit?.cents).toBe(5000);
+    });
+
+    it('sets and updates budgetLimit on active session', () => {
+      const session = ShoppingSession.create();
+      const limit = Money.fromCents(6000);
+
+      session.setBudgetLimit(limit);
+      expect(session.budgetLimit?.cents).toBe(6000);
+
+      const newLimit = Money.fromCents(7500);
+      session.setBudgetLimit(newLimit);
+      expect(session.budgetLimit?.cents).toBe(7500);
+    });
+
+    it('clears budgetLimit when passed null or undefined', () => {
+      const session = ShoppingSession.create();
+      session.setBudgetLimit(Money.fromCents(5000));
+      expect(session.budgetLimit).toBeDefined();
+
+      session.setBudgetLimit(null);
+      expect(session.budgetLimit).toBeUndefined();
+
+      session.setBudgetLimit(Money.fromCents(5000));
+      session.setBudgetLimit(undefined);
+      expect(session.budgetLimit).toBeUndefined();
+    });
+
+    it('enforces active session invariant on setBudgetLimit', () => {
+      const session = ShoppingSession.create();
+      session.complete();
+      expect(() => session.setBudgetLimit(Money.fromCents(5000))).toThrow(
+        'Cannot modify session: session is already COMPLETED'
+      );
+
+      const discardedSession = ShoppingSession.create();
+      discardedSession.discard();
+      expect(() => discardedSession.setBudgetLimit(Money.fromCents(5000))).toThrow(
+        'Cannot modify session: session is already DISCARDED'
+      );
+    });
+
+    it('rejects non-positive budget limits', () => {
+      const session = ShoppingSession.create();
+      expect(() => session.setBudgetLimit(Money.fromCents(0))).toThrow(
+        'Budget limit must be greater than zero'
+      );
+    });
+
+    it('rejects invalid budgetLimit types', () => {
+      const session = ShoppingSession.create();
+      expect(() => session.setBudgetLimit('invalid' as unknown as Money)).toThrow(
+        'budgetLimit must be an instance of Money'
+      );
+    });
+
+    it('returns NONE when no budget is configured', () => {
+      const session = ShoppingSession.create();
+      expect(session.budgetStatus()).toBe('NONE');
+      expect(session.budgetMetrics()).toBeNull();
+    });
+
+    it('evaluates status and thresholds accurately: NORMAL (<80%), WARNING (80%-100%), EXCEEDED (>100%)', () => {
+      const session = ShoppingSession.create();
+      session.setBudgetLimit(Money.fromCents(10000)); // 100,00 €
+
+      // 79,99 € -> NORMAL
+      session.addItem({
+        name: 'Item 1',
+        unitPrice: Money.fromCents(7999),
+        quantity: 1,
+      });
+      expect(session.budgetStatus()).toBe('NORMAL');
+
+      // Add 0,01 € -> 80,00 € -> WARNING (exact boundary)
+      const item2 = session.addItem({
+        name: 'Item 2',
+        unitPrice: Money.fromCents(1),
+        quantity: 1,
+      });
+      expect(session.total().cents).toBe(8000);
+      expect(session.budgetStatus()).toBe('WARNING');
+
+      // Update item 2 to 20,01 € -> 100,00 € -> WARNING (exact cap boundary)
+      session.updateItemPrice(item2.id, Money.fromCents(2001));
+      expect(session.total().cents).toBe(10000);
+      expect(session.budgetStatus()).toBe('WARNING');
+
+      const metricsAtCap = session.budgetMetrics();
+      expect(metricsAtCap).not.toBeNull();
+      expect(metricsAtCap?.remaining.cents).toBe(0);
+      expect(metricsAtCap?.overBudget.cents).toBe(0);
+      expect(metricsAtCap?.percentage).toBe(100);
+
+      // Add 0,01 € -> 100,01 € -> EXCEEDED
+      session.addItem({
+        name: 'Extra Item',
+        unitPrice: Money.fromCents(1),
+        quantity: 1,
+      });
+      expect(session.total().cents).toBe(10001);
+      expect(session.budgetStatus()).toBe('EXCEEDED');
+      const metricsExceeded = session.budgetMetrics();
+      expect(metricsExceeded?.remaining.cents).toBe(0);
+      expect(metricsExceeded?.overBudget.cents).toBe(1);
+      expect(metricsExceeded?.percentage).toBe(100);
+    });
+
+    it('calculates percentage and defensive non-negative headroom/deficit correctly', () => {
+      const session = ShoppingSession.create();
+      session.setBudgetLimit(Money.fromCents(5000)); // 50,00 €
+
+      session.addItem({
+        name: 'Item 1',
+        unitPrice: Money.fromCents(1500),
+        quantity: 1,
+      }); // 15,00 € -> 30%
+
+      const metrics = session.budgetMetrics();
+      expect(metrics).not.toBeNull();
+      expect(metrics?.percentage).toBe(30);
+      expect(metrics?.remaining.cents).toBe(3500);
+      expect(metrics?.overBudget.cents).toBe(0);
+
+      // Add item exceeding budget: 50,00 € + 20,00 € = 70,00 € (140%)
+      session.addItem({
+        name: 'Item 2',
+        unitPrice: Money.fromCents(5500),
+        quantity: 1,
+      });
+      expect(session.total().cents).toBe(7000);
+
+      const metricsOver = session.budgetMetrics();
+      expect(metricsOver).not.toBeNull();
+      expect(metricsOver?.percentage).toBe(140);
+      expect(metricsOver?.remaining.cents).toBe(0);
+      expect(metricsOver?.overBudget.cents).toBe(2000);
+      expect(metricsOver?.status).toBe('EXCEEDED');
+    });
+
+    it('computes dynamic margin per pending item', () => {
+      const session = ShoppingSession.create();
+      session.setBudgetLimit(Money.fromCents(5000)); // 50,00 €
+
+      session.addItem({
+        name: 'Item',
+        unitPrice: Money.fromCents(2000),
+        quantity: 1,
+      }); // 20,00 € total, 30,00 € remaining
+
+      // 4 pending items: 3000 / 4 = 750 cents (7,50 €)
+      const metrics4 = session.budgetMetrics(4);
+      expect(metrics4?.marginPerPendingItem?.cents).toBe(750);
+      expect(metrics4?.marginPerPendingItem?.toFormattedString()).toBe('7,50 €');
+
+      // 0 pending items or undefined -> null
+      expect(session.budgetMetrics(0)?.marginPerPendingItem).toBeNull();
+      expect(session.budgetMetrics(undefined)?.marginPerPendingItem).toBeNull();
+      expect(session.budgetMetrics(-2)?.marginPerPendingItem).toBeNull();
+
+      // Exceeded budget with pending items -> Money.zero()
+      session.addItem({
+        name: 'Item Big',
+        unitPrice: Money.fromCents(3500),
+        quantity: 1,
+      }); // Total 55,00 € > 50,00 €
+      const metricsExceeded = session.budgetMetrics(3);
+      expect(metricsExceeded?.marginPerPendingItem?.cents).toBe(0);
+      expect(metricsExceeded?.marginPerPendingItem?.toFormattedString()).toBe('0,00 €');
+    });
+  });
 });

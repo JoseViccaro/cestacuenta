@@ -151,4 +151,8 @@ export class ShoppingList {
       percentage,
     };
   }
+
+  pendingCount(): number {
+    return this._items.filter((item) => !item.isChecked).length;
+  }
 }

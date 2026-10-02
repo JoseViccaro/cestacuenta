@@ -18,6 +18,18 @@ function generateUUID(): string {
 
 export type SessionStatus = 'ACTIVE' | 'COMPLETED' | 'DISCARDED';
 
+export type BudgetStatus = 'NONE' | 'NORMAL' | 'WARNING' | 'EXCEEDED';
+
+export interface BudgetMetrics {
+  limit: Money;
+  total: Money;
+  remaining: Money;
+  overBudget: Money;
+  percentage: number;
+  status: BudgetStatus;
+  marginPerPendingItem: Money | null;
+}
+
 export interface ShoppingSessionProps {
   id?: string;
   startedAt?: Date;
@@ -25,6 +37,7 @@ export interface ShoppingSessionProps {
   status?: SessionStatus;
   storeName?: string;
   items?: CartItem[];
+  budgetLimit?: Money;
 }
 
 export class ShoppingSession {
@@ -34,6 +47,7 @@ export class ShoppingSession {
   status: SessionStatus;
   storeName?: string;
   private _items: CartItem[];
+  private _budgetLimit?: Money;
 
   constructor(props?: ShoppingSessionProps) {
     this.id = props?.id ?? generateUUID();
@@ -42,16 +56,101 @@ export class ShoppingSession {
     this.status = props?.status ?? 'ACTIVE';
     this.storeName = props?.storeName;
     this._items = props?.items ? [...props.items] : [];
+    this._budgetLimit = props?.budgetLimit;
   }
 
-  static create(props?: { id?: string; storeName?: string }): ShoppingSession {
+  static create(props?: { id?: string; storeName?: string; budgetLimit?: Money }): ShoppingSession {
     return new ShoppingSession({
       id: props?.id,
       storeName: props?.storeName,
       status: 'ACTIVE',
       startedAt: new Date(),
       items: [],
+      budgetLimit: props?.budgetLimit,
     });
+  }
+
+  get budgetLimit(): Money | undefined {
+    return this._budgetLimit;
+  }
+
+  setBudgetLimit(limit: Money | null | undefined): void {
+    this.ensureActive();
+
+    if (limit === null || limit === undefined) {
+      this._budgetLimit = undefined;
+      return;
+    }
+
+    if (!(limit instanceof Money)) {
+      throw new Error('budgetLimit must be an instance of Money');
+    }
+
+    if (limit.cents <= 0) {
+      throw new Error('Budget limit must be greater than zero');
+    }
+
+    this._budgetLimit = limit;
+  }
+
+  budgetStatus(): BudgetStatus {
+    if (!this._budgetLimit) {
+      return 'NONE';
+    }
+
+    const currentTotal = this.total();
+    const limitCents = this._budgetLimit.cents;
+    const warningThresholdCents = Math.round(limitCents * 0.8);
+
+    if (currentTotal.cents > limitCents) {
+      return 'EXCEEDED';
+    }
+    if (currentTotal.cents >= warningThresholdCents) {
+      return 'WARNING';
+    }
+    return 'NORMAL';
+  }
+
+  budgetMetrics(pendingItemCount?: number): BudgetMetrics | null {
+    if (!this._budgetLimit) {
+      return null;
+    }
+
+    const total = this.total();
+    const limit = this._budgetLimit;
+    const status = this.budgetStatus();
+    const percentage = Math.round((total.cents / limit.cents) * 100);
+
+    let remaining: Money;
+    let overBudget: Money;
+
+    if (total.cents <= limit.cents) {
+      remaining = limit.subtract(total);
+      overBudget = Money.zero();
+    } else {
+      remaining = Money.zero();
+      overBudget = total.subtract(limit);
+    }
+
+    let marginPerPendingItem: Money | null = null;
+    if (typeof pendingItemCount === 'number' && pendingItemCount > 0) {
+      if (remaining.cents === 0) {
+        marginPerPendingItem = Money.zero();
+      } else {
+        const marginCents = Math.floor(remaining.cents / pendingItemCount);
+        marginPerPendingItem = Money.fromCents(marginCents);
+      }
+    }
+
+    return {
+      limit,
+      total,
+      remaining,
+      overBudget,
+      percentage,
+      status,
+      marginPerPendingItem,
+    };
   }
 
   get items(): CartItem[] {

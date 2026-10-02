@@ -278,4 +278,46 @@ describe('ShoppingList Aggregate Entity', () => {
       expect(list.title).toBe('Lista de la compra');
     });
   });
+
+  describe('pendingCount inspection', () => {
+    it('returns 0 on an empty shopping list', () => {
+      const list = ShoppingList.create();
+      expect(list.pendingCount()).toBe(0);
+    });
+
+    it('returns total item count when all items are unchecked', () => {
+      const list = ShoppingList.create();
+      list.addItem('Leche');
+      list.addItem('Huevos');
+      list.addItem('Pan');
+
+      expect(list.pendingCount()).toBe(3);
+    });
+
+    it('decrements as items are checked off', () => {
+      const list = ShoppingList.create();
+      const item1 = list.addItem('Leche');
+      const item2 = list.addItem('Huevos');
+      list.addItem('Pan');
+
+      expect(list.pendingCount()).toBe(3);
+
+      list.checkItem(item1.id);
+      expect(list.pendingCount()).toBe(2);
+
+      list.checkItem(item2.id);
+      expect(list.pendingCount()).toBe(1);
+    });
+
+    it('returns 0 when all items are checked', () => {
+      const list = ShoppingList.create();
+      const item1 = list.addItem('Leche');
+      const item2 = list.addItem('Huevos');
+
+      list.checkItem(item1.id);
+      list.checkItem(item2.id);
+
+      expect(list.pendingCount()).toBe(0);
+    });
+  });
 });

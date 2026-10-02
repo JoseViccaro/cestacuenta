@@ -303,4 +303,60 @@ describe('LocalStorageShoppingSessionRepository', () => {
       expect(retrieved!.items[0].unitPrice.cents).toBe(145);
     });
   });
+
+  describe('budgetLimit persistence and backward compatibility', () => {
+    it('persists budgetLimitCents in serialized JSON and hydrates correctly', async () => {
+      const session = ShoppingSession.create({ storeName: 'Mercadona' });
+      session.setBudgetLimit(Money.fromCents(5000));
+      await repository.save(session);
+
+      const raw = storage.getItem(LocalStorageShoppingSessionRepository.ACTIVE_SESSION_KEY);
+      expect(raw).not.toBeNull();
+      const parsed = JSON.parse(raw!);
+      expect(parsed.budgetLimitCents).toBe(5000);
+
+      const loaded = await repository.getActiveSession();
+      expect(loaded).not.toBeNull();
+      expect(loaded!.budgetLimit).toBeDefined();
+      expect(loaded!.budgetLimit?.cents).toBe(5000);
+      expect(loaded!.budgetStatus()).toBe('NORMAL');
+    });
+
+    it('safely hydrates legacy session JSON lacking budgetLimitCents', async () => {
+      const legacyData = {
+        id: 'legacy-session-1',
+        startedAt: new Date().toISOString(),
+        status: 'ACTIVE',
+        storeName: 'Eroski',
+        items: [],
+      };
+      storage.setItem(
+        LocalStorageShoppingSessionRepository.ACTIVE_SESSION_KEY,
+        JSON.stringify(legacyData)
+      );
+
+      const loaded = await repository.getActiveSession();
+      expect(loaded).not.toBeNull();
+      expect(loaded!.id).toBe('legacy-session-1');
+      expect(loaded!.budgetLimit).toBeUndefined();
+      expect(loaded!.budgetStatus()).toBe('NONE');
+    });
+
+    it('clears budgetLimit and serializes undefined/null properly', async () => {
+      const session = ShoppingSession.create();
+      session.setBudgetLimit(Money.fromCents(4000));
+      await repository.save(session);
+
+      session.setBudgetLimit(null);
+      await repository.save(session);
+
+      const raw = storage.getItem(LocalStorageShoppingSessionRepository.ACTIVE_SESSION_KEY);
+      const parsed = JSON.parse(raw!);
+      expect(parsed.budgetLimitCents).toBeUndefined();
+
+      const loaded = await repository.getActiveSession();
+      expect(loaded!.budgetLimit).toBeUndefined();
+      expect(loaded!.budgetStatus()).toBe('NONE');
+    });
+  });
 });

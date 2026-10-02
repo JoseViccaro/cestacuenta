@@ -24,6 +24,7 @@ export interface SerializedShoppingSession {
   status: SessionStatus;
   storeName?: string;
   items: SerializedCartItem[];
+  budgetLimitCents?: number | null;
 }
 
 export interface KeyValueStorage {
@@ -201,6 +202,7 @@ export class LocalStorageShoppingSessionRepository implements ShoppingSessionRep
         isBulk: item.isBulk,
         discountCents: item.discount.cents,
       })),
+      budgetLimitCents: session.budgetLimit?.cents,
     };
   }
 
@@ -228,6 +230,11 @@ export class LocalStorageShoppingSessionRepository implements ShoppingSessionRep
       });
     });
 
+    const budgetLimit =
+      typeof data.budgetLimitCents === 'number' && data.budgetLimitCents > 0
+        ? Money.fromCents(data.budgetLimitCents)
+        : undefined;
+
     return new ShoppingSession({
       id: data.id,
       startedAt: new Date(data.startedAt),
@@ -235,6 +242,7 @@ export class LocalStorageShoppingSessionRepository implements ShoppingSessionRep
       status: data.status,
       storeName: data.storeName ?? undefined,
       items,
+      budgetLimit,
     });
   }
 }
