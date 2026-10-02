@@ -63,7 +63,7 @@ export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
         <div className="total-display-card">
           <div className="total-meta-info">
             <div className="total-label-row">
-              <span>Total Estimado</span>
+              <span>Total en cesta</span>
               <span className="meta-pill">
                 {itemCount} {itemCount === 1 ? 'ud' : 'uds'}
               </span>
