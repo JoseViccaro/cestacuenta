@@ -22,17 +22,36 @@ import { Haptics } from '../infrastructure/device/Haptics.js';
 import { Header } from './components/Header.js';
 import { CartList } from './components/CartList.js';
 import { StickyBottomBar } from './components/StickyBottomBar.js';
-import { ManualItemModal } from './components/ManualItemModal.js';
-import { EditPriceModal } from './components/EditPriceModal.js';
-import { FinishModal } from './components/FinishModal.js';
-import { ScannerModal } from './components/ScannerModal.js';
-import { ScanPricePromptModal } from './components/ScanPricePromptModal.js';
 import { ToastUndo } from './components/ToastUndo.js';
-import { HistoryModal } from './components/HistoryModal.js';
 import { ShoppingListBanner } from './components/ShoppingListBanner.js';
-import { ShoppingListModal } from './components/ShoppingListModal.js';
-import { ProductPriceHistoryModal } from './components/ProductPriceHistoryModal.js';
-import { SetBudgetModal } from './components/SetBudgetModal.js';
+
+const ManualItemModal = React.lazy(() =>
+  import('./components/ManualItemModal.js').then((m) => ({ default: m.ManualItemModal }))
+);
+const EditPriceModal = React.lazy(() =>
+  import('./components/EditPriceModal.js').then((m) => ({ default: m.EditPriceModal }))
+);
+const FinishModal = React.lazy(() =>
+  import('./components/FinishModal.js').then((m) => ({ default: m.FinishModal }))
+);
+const ScannerModal = React.lazy(() =>
+  import('./components/ScannerModal.js').then((m) => ({ default: m.ScannerModal }))
+);
+const ScanPricePromptModal = React.lazy(() =>
+  import('./components/ScanPricePromptModal.js').then((m) => ({ default: m.ScanPricePromptModal }))
+);
+const HistoryModal = React.lazy(() =>
+  import('./components/HistoryModal.js').then((m) => ({ default: m.HistoryModal }))
+);
+const ShoppingListModal = React.lazy(() =>
+  import('./components/ShoppingListModal.js').then((m) => ({ default: m.ShoppingListModal }))
+);
+const ProductPriceHistoryModal = React.lazy(() =>
+  import('./components/ProductPriceHistoryModal.js').then((m) => ({ default: m.ProductPriceHistoryModal }))
+);
+const SetBudgetModal = React.lazy(() =>
+  import('./components/SetBudgetModal.js').then((m) => ({ default: m.SetBudgetModal }))
+);
 
 const DEFAULT_STORE_NAME = 'Mi Supermercado';
 
@@ -654,88 +673,108 @@ export const App: React.FC = () => {
         onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
       />
 
-      <ScannerModal
-        isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
-        onScan={handleBarcodeScanned}
-        onShelfTagScanned={handleShelfTagScanned}
-        isPaused={isScanPriceModalOpen}
-        cartTotal={total}
-        cartItemCount={totalItemCount}
-      />
+      <React.Suspense fallback={null}>
+        {isScannerOpen && (
+          <ScannerModal
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            onScan={handleBarcodeScanned}
+            onShelfTagScanned={handleShelfTagScanned}
+            isPaused={isScanPriceModalOpen}
+            cartTotal={total}
+            cartItemCount={totalItemCount}
+          />
+        )}
 
-      <ScanPricePromptModal
-        isOpen={isScanPriceModalOpen}
-        barcode={pendingScanCode || ''}
-        initialName={pendingLookupResult?.name}
-        initialPrice={pendingLookupResult?.suggestedPrice}
-        isScale={pendingLookupResult?.isScale}
-        source={pendingLookupResult?.source}
-        currentStore={session.storeName}
-        priceHistoryService={storePriceHistoryService}
-        onClose={handleCloseScanPriceModal}
-        onConfirm={handleConfirmScanPrice}
-        onViewPriceHistory={handleViewPriceHistory}
-      />
+        {isScanPriceModalOpen && (
+          <ScanPricePromptModal
+            isOpen={isScanPriceModalOpen}
+            barcode={pendingScanCode || ''}
+            initialName={pendingLookupResult?.name}
+            initialPrice={pendingLookupResult?.suggestedPrice}
+            isScale={pendingLookupResult?.isScale}
+            source={pendingLookupResult?.source}
+            currentStore={session.storeName}
+            priceHistoryService={storePriceHistoryService}
+            onClose={handleCloseScanPriceModal}
+            onConfirm={handleConfirmScanPrice}
+            onViewPriceHistory={handleViewPriceHistory}
+          />
+        )}
 
-      <ManualItemModal
-        isOpen={isManualModalOpen}
-        onClose={() => setIsManualModalOpen(false)}
-        onAddItem={handleAddItem}
-      />
+        {isManualModalOpen && (
+          <ManualItemModal
+            isOpen={isManualModalOpen}
+            onClose={() => setIsManualModalOpen(false)}
+            onAddItem={handleAddItem}
+          />
+        )}
 
-      <EditPriceModal
-        isOpen={Boolean(editingItem)}
-        item={editingItem}
-        currentStore={session.storeName}
-        priceHistoryService={storePriceHistoryService}
-        onClose={() => setEditingItem(null)}
-        onSavePrice={handleSavePrice}
-      />
+        {Boolean(editingItem) && (
+          <EditPriceModal
+            isOpen={Boolean(editingItem)}
+            item={editingItem}
+            currentStore={session.storeName}
+            priceHistoryService={storePriceHistoryService}
+            onClose={() => setEditingItem(null)}
+            onSavePrice={handleSavePrice}
+          />
+        )}
 
-      <FinishModal
-        isOpen={isFinishModalOpen}
-        session={session}
-        onClose={() => setIsFinishModalOpen(false)}
-        onConfirmFinish={handleConfirmFinish}
-      />
+        {isFinishModalOpen && (
+          <FinishModal
+            isOpen={isFinishModalOpen}
+            session={session}
+            onClose={() => setIsFinishModalOpen(false)}
+            onConfirmFinish={handleConfirmFinish}
+          />
+        )}
 
-      <HistoryModal
-        key={historyRefreshKey}
-        isOpen={isHistoryModalOpen}
-        onClose={() => setIsHistoryModalOpen(false)}
-        sessionRepository={repository}
-      />
+        {isHistoryModalOpen && (
+          <HistoryModal
+            key={historyRefreshKey}
+            isOpen={isHistoryModalOpen}
+            onClose={() => setIsHistoryModalOpen(false)}
+            sessionRepository={repository}
+          />
+        )}
 
-      <ShoppingListModal
-        isOpen={isShoppingListModalOpen}
-        initialMode={shoppingListModalMode}
-        onClose={() => setIsShoppingListModalOpen(false)}
-        shoppingList={shoppingList}
-        onAddItem={handleAddListItem}
-        onImportText={handleImportListText}
-        onToggleItem={handleToggleListItem}
-        onDeleteItem={handleDeleteListItem}
-        onClearCompleted={handleClearCompletedList}
-      />
+        {isShoppingListModalOpen && (
+          <ShoppingListModal
+            isOpen={isShoppingListModalOpen}
+            initialMode={shoppingListModalMode}
+            onClose={() => setIsShoppingListModalOpen(false)}
+            shoppingList={shoppingList}
+            onAddItem={handleAddListItem}
+            onImportText={handleImportListText}
+            onToggleItem={handleToggleListItem}
+            onDeleteItem={handleDeleteListItem}
+            onClearCompleted={handleClearCompletedList}
+          />
+        )}
 
-      <ProductPriceHistoryModal
-        isOpen={isPriceHistoryModalOpen}
-        comparison={selectedPriceComparison}
-        onClose={() => {
-          setIsPriceHistoryModalOpen(false);
-          setSelectedPriceComparison(null);
-        }}
-      />
+        {isPriceHistoryModalOpen && (
+          <ProductPriceHistoryModal
+            isOpen={isPriceHistoryModalOpen}
+            comparison={selectedPriceComparison}
+            onClose={() => {
+              setIsPriceHistoryModalOpen(false);
+              setSelectedPriceComparison(null);
+            }}
+          />
+        )}
 
-      <SetBudgetModal
-        isOpen={isBudgetModalOpen}
-        currentBudget={session?.budgetLimit ?? null}
-        currentTotal={total}
-        pendingItemCount={pendingItemCount}
-        onClose={() => setIsBudgetModalOpen(false)}
-        onSaveBudget={handleSetBudgetLimit}
-      />
+        {isBudgetModalOpen && (
+          <SetBudgetModal
+            isOpen={isBudgetModalOpen}
+            currentBudget={session?.budgetLimit ?? null}
+            currentTotal={total}
+            pendingItemCount={pendingItemCount}
+            onClose={() => setIsBudgetModalOpen(false)}
+            onSaveBudget={handleSetBudgetLimit}
+          />
+        )}
+      </React.Suspense>
     </div>
   );
 };
