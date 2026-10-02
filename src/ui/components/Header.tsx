@@ -66,41 +66,43 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="app-header" role="banner">
-      <div className="header-left">
-        {isEditingStore ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <input
-              type="text"
-              className="store-name-input"
-              value={tempStoreName}
-              onChange={(e) => setTempStoreName(e.target.value)}
-              onBlur={handleSaveStore}
-              onKeyDown={handleKeyDown}
-              autoFocus
-              aria-label="Nombre del supermercado o tienda"
-            />
+      <div className="header-top-row">
+        <div className="header-left">
+          {isEditingStore ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input
+                type="text"
+                className="store-name-input"
+                value={tempStoreName}
+                onChange={(e) => setTempStoreName(e.target.value)}
+                onBlur={handleSaveStore}
+                onKeyDown={handleKeyDown}
+                autoFocus
+                aria-label="Nombre del supermercado o tienda"
+              />
+              <button
+                type="button"
+                onClick={handleSaveStore}
+                className="btn-header-action"
+                aria-label="Confirmar nombre de la tienda"
+              >
+                <Check size={16} />
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={handleSaveStore}
-              className="btn-header-action"
-              aria-label="Confirmar nombre de la tienda"
+              className="store-badge-btn"
+              onClick={handleStartEdit}
+              title="Toca para editar el nombre de la tienda"
+              aria-label={`Tienda: ${storeName}. Toca para cambiar el nombre.`}
             >
-              <Check size={16} />
+              <Store size={18} className="store-edit-icon" />
+              <span className="store-name-text">{storeName}</span>
+              <Pencil size={12} className="store-edit-icon" />
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="store-badge-btn"
-            onClick={handleStartEdit}
-            title="Toca para editar el nombre de la tienda"
-            aria-label={`Tienda: ${storeName}. Toca para cambiar el nombre.`}
-          >
-            <Store size={18} className="store-edit-icon" />
-            <span className="store-name-text">{storeName}</span>
-            <Pencil size={12} className="store-edit-icon" />
-          </button>
-        )}
+          )}
+        </div>
 
         <div className="header-meta">
           <span className="meta-pill">
