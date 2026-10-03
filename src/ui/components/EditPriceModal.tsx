@@ -144,6 +144,9 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
               ref={inputRef}
               type="text"
               inputMode="decimal"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               className={`form-input form-input-price ${error ? 'input-error' : ''}`}
               value={priceInput}
               onChange={(e) => handlePriceChange(e.target.value)}

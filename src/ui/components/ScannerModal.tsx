@@ -816,7 +816,10 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 <input
                   type="text"
                   inputMode="numeric"
-                  pattern="[0-9]*"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   autoFocus
                   className={`scanner-manual-input ${manualError ? 'input-error' : ''}`}
                   placeholder="Ej. 8410123456789"

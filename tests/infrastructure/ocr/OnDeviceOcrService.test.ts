@@ -271,6 +271,72 @@ describe('OnDeviceOcrService', () => {
       }
     });
 
+    it('does not invert red or colored discount tags (e.g. Mercadona bajada de precio red tag)', () => {
+      const w = 600;
+      const h = 600;
+      const numPixels = w * h;
+      const mockData = new Uint8ClampedArray(numPixels * 4);
+
+      // Red tag paper: 80% background (r=210, g=40, b=30, Rec.601 lum ~ 90)
+      // Black printed text: 20% text (r=15, g=15, b=15, lum ~ 15)
+      for (let i = 0; i < numPixels; i++) {
+        const idx = i * 4;
+        const isText = i % 5 === 0;
+        if (isText) {
+          mockData[idx] = 15;
+          mockData[idx + 1] = 15;
+          mockData[idx + 2] = 15;
+        } else {
+          mockData[idx] = 210;
+          mockData[idx + 1] = 40;
+          mockData[idx + 2] = 30;
+        }
+        mockData[idx + 3] = 255;
+      }
+
+      let putDataResult: Uint8ClampedArray | null = null;
+      const mockOutputCtx = {
+        drawImage: () => {},
+        getImageData: () => ({ data: mockData }),
+        putImageData: (imgData: { data: Uint8ClampedArray }) => {
+          putDataResult = imgData.data;
+        },
+      };
+
+      const mockOutputCanvas = {
+        width: w,
+        height: h,
+        getContext: () => mockOutputCtx,
+      };
+
+      const originalDoc = globalThis.document;
+      // @ts-expect-error mocking document for node test
+      globalThis.document = {
+        createElement: (tag: string) => (tag === 'canvas' ? mockOutputCanvas : null),
+      };
+
+      try {
+        const sourceCanvas = {
+          width: w,
+          height: h,
+          getContext: () => mockOutputCtx,
+        } as unknown as HTMLCanvasElement;
+
+        const result = preprocessShelfTagCanvas(sourceCanvas);
+        expect(result).toBe(mockOutputCanvas);
+        expect(putDataResult).not.toBeNull();
+
+        // Background pixels must remain bright (>200) and text must remain dark (<50)
+        // Background pixel (not text, index 1)
+        const bgIdx = 1 * 4;
+        const textIdx = 0 * 4;
+        expect(putDataResult![bgIdx]).toBeGreaterThan(200);
+        expect(putDataResult![textIdx]).toBeLessThan(50);
+      } finally {
+        globalThis.document = originalDoc;
+      }
+    });
+
     it('clamps large canvas crops (e.g. 1200x800) to max dimension 720px (720x480)', () => {
       const w = 1200;
       const h = 800;

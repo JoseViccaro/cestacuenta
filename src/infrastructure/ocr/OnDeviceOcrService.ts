@@ -179,10 +179,6 @@ export function preprocessShelfTagCanvas(sourceCanvas: HTMLCanvasElement): HTMLC
       }
     }
 
-    // If the dominant background / median is light (> 110), keep dark-on-light!
-    // Only invert if the true background of the label is genuinely dark (< 110).
-    const isDarkBackground = medianLum < 110 && dominantPeakLum < 110;
-
     // 3. Dynamic contrast stretching (2nd to 98th percentile)
     let pCumulative = 0;
     let p2 = 0;
@@ -202,6 +198,14 @@ export function preprocessShelfTagCanvas(sourceCanvas: HTMLCanvasElement): HTMLC
     }
 
     const pRange = p98 - p2;
+
+    // Determine polarity using the histogram median, dominant peak, and text percentiles.
+    // In supermarket product labels, the paper/shelf background occupies the vast majority (>60-80%) of pixels.
+    // Colored tags (e.g. Mercadona red "bajada de precio" tags, dark yellow discount labels) have a median
+    // luminance around 80-100 in Rec.601, but the printed ink is dark black (luminance < 30).
+    // An image is ONLY inverted if the label background itself is genuinely dark (dominant mode < 65)
+    // AND the text is significantly brighter than the background (p98 > dominantPeakLum + 45).
+    const isDarkBackground = dominantPeakLum < 65 && p98 > dominantPeakLum + 45;
 
     // 4. Smooth grayscale contrast enhancement (preserves text glyphs and prevents
     // aggressive thresholding artifacts under plastic reflections, glare, and shadows)
@@ -247,7 +251,8 @@ export async function recognizePriceFromCanvas(
       return { text: '', price: null };
     }
 
-    const result = await worker.recognize(canvas);
+    const preprocessedCanvas = preprocessShelfTagCanvas(canvas);
+    const result = await worker.recognize(preprocessedCanvas);
     const text = result?.data?.text || '';
     const price = ShelfPriceOcrParser.extractBestPrice(text);
 
